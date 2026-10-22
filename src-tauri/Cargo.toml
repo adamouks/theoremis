@@ -1,7 +1,7 @@
 [package]
 name = "theoremis"
 version = "0.1.0"
-description = "Theoremis — a desktop AI workspace for Ollama and ChatGPT"
+description = "Theoremis — the AI-native workspace for mathematics"
 authors = ["adamouks"]
 edition = "2024"
 

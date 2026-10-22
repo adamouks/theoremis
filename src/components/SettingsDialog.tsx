@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "../lib/api";
 import type { Settings, SettingsUpdate } from "../lib/types";
-import { CloseIcon } from "./Icons";
+import { Close, OllamaMark, OpenAILogo } from "./Icons";
 
 interface Props {
   settings: Settings;
@@ -14,10 +14,11 @@ function keyDescription(settings: Settings): string {
   const { source, hint } = settings.openaiKey;
   if (source === "settings") return `Using the key saved in Theoremis (${hint}).`;
   if (source === "env") return `Using OPENAI_API_KEY from your environment (${hint}).`;
-  return "No key yet. Keys are stored only on this computer.";
+  return "No key yet. It is stored only on this computer and never shown to the interface.";
 }
 
 export function SettingsDialog({ settings, onClose, onSaved }: Props) {
+  const [displayName, setDisplayName] = useState(settings.displayName);
   const [apiKey, setApiKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState(settings.openaiBaseUrl);
@@ -35,6 +36,7 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const update: SettingsUpdate = {};
+    if (displayName !== settings.displayName) update.displayName = displayName;
     if (apiKey.trim()) update.openaiApiKey = apiKey.trim();
     else if (removeKey) update.openaiApiKey = "";
     if (openaiBaseUrl !== settings.openaiBaseUrl) update.openaiBaseUrl = openaiBaseUrl;
@@ -57,15 +59,29 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
         <header className="dialog__head">
           <h2 id="settings-title">Settings</h2>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings">
-            <CloseIcon />
+            <Close size={12} />
           </button>
         </header>
 
         <div className="dialog__body">
           <section className="settings-section">
+            <h3>You</h3>
+            <label className="field">
+              <span>Name</span>
+              <input
+                value={displayName}
+                placeholder="e.g. Élise Moreau"
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+              <small>Shown on your documents and on what you ask the collaborator.</small>
+            </label>
+          </section>
+
+          <section className="settings-section">
             <h3>
-              <span className="provider-dot provider-dot--openai" />
-              ChatGPT (OpenAI)
+              <OpenAILogo size={14} />
+              ChatGPT
+              <span className="settings-section__tag">OpenAI API</span>
             </h3>
             <label className="field">
               <span>API key</span>
@@ -82,11 +98,7 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
               />
               <small>
                 {removeKey ? "The saved key will be removed." : keyDescription(settings)}{" "}
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => void openUrl("https://platform.openai.com/api-keys")}
-                >
+                <button type="button" className="link-button" onClick={() => void openUrl("https://platform.openai.com/api-keys")}>
                   Get an API key
                 </button>
                 {settings.openaiKey.source === "settings" && !removeKey && (
@@ -114,8 +126,9 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
 
           <section className="settings-section">
             <h3>
-              <span className="provider-dot provider-dot--ollama" />
+              <OllamaMark size={14} />
               Ollama
+              <span className="settings-section__tag">Local models</span>
             </h3>
             <label className="field">
               <span>Server URL</span>
@@ -128,29 +141,25 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
               />
               <small>
                 Runs models on your machine.{" "}
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => void openUrl("https://ollama.com/download")}
-                >
+                <button type="button" className="link-button" onClick={() => void openUrl("https://ollama.com/download")}>
                   Download Ollama
                 </button>
-                , then pull a model with <code>ollama pull llama3.2</code>.
+                , then pull a model with <code>ollama pull qwen3:8b</code>.
               </small>
             </label>
           </section>
 
           <section className="settings-section">
-            <h3>Assistant</h3>
+            <h3>Collaborator</h3>
             <label className="field">
-              <span>System prompt</span>
+              <span>Standing instructions</span>
               <textarea
                 rows={4}
-                placeholder="e.g. You are a careful mathematician. Write proofs step by step and use LaTeX for math."
+                placeholder="e.g. Prefer elementary arguments. I work in analytic number theory."
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
               />
-              <small>Sent at the start of every conversation, to every model.</small>
+              <small>Added to every request, for every model.</small>
             </label>
           </section>
 
@@ -162,10 +171,10 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
         </div>
 
         <footer className="dialog__foot">
-          <button type="button" className="button button--ghost" onClick={onClose}>
+          <button type="button" className="text-button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="button button--primary" disabled={saving}>
+          <button type="submit" className="button button--cream" disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </button>
         </footer>

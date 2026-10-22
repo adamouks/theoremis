@@ -15,11 +15,11 @@ use tokio_util::sync::CancellationToken;
 use error::{AppError, AppResult};
 use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ollama, openai};
 use settings::{SettingsStore, SettingsUpdate, SettingsView};
-use storage::{Conversation, ConversationStore, ConversationSummary};
+use storage::{DocumentSummary, Project, Workspace, WorkspaceStore};
 
 struct AppState {
     settings: SettingsStore,
-    conversations: ConversationStore,
+    workspace: WorkspaceStore,
     http: reqwest::Client,
     /// Cancellation handles for replies that are still streaming, keyed by request id.
     streams: Mutex<HashMap<String, CancellationToken>>,
@@ -131,31 +131,34 @@ fn chat_cancel(state: tauri::State<'_, AppState>, request_id: String) -> bool {
 }
 
 #[tauri::command]
-async fn list_conversations(
-    state: tauri::State<'_, AppState>,
-) -> AppResult<Vec<ConversationSummary>> {
-    state.conversations.list().await
+async fn load_workspace(state: tauri::State<'_, AppState>) -> AppResult<Workspace> {
+    state.workspace.load().await
 }
 
 #[tauri::command]
-async fn load_conversation(
+async fn save_projects(state: tauri::State<'_, AppState>, projects: Vec<Project>) -> AppResult<()> {
+    state.workspace.save_projects(&projects).await
+}
+
+#[tauri::command]
+async fn load_document(
     state: tauri::State<'_, AppState>,
     id: String,
-) -> AppResult<Conversation> {
-    state.conversations.load(&id).await
+) -> AppResult<serde_json::Value> {
+    state.workspace.load_document(&id).await
 }
 
 #[tauri::command]
-async fn save_conversation(
+async fn save_document(
     state: tauri::State<'_, AppState>,
-    conversation: Conversation,
-) -> AppResult<()> {
-    state.conversations.save(&conversation).await
+    document: serde_json::Value,
+) -> AppResult<DocumentSummary> {
+    state.workspace.save_document(&document).await
 }
 
 #[tauri::command]
-async fn delete_conversation(state: tauri::State<'_, AppState>, id: String) -> AppResult<()> {
-    state.conversations.delete(&id).await
+async fn delete_document(state: tauri::State<'_, AppState>, id: String) -> AppResult<()> {
+    state.workspace.delete_document(&id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -171,7 +174,7 @@ pub fn run() {
                 .build()?;
             app.manage(AppState {
                 settings: SettingsStore::load(config_dir.join("settings.json")),
-                conversations: ConversationStore::new(data_dir.join("conversations")),
+                workspace: WorkspaceStore::new(data_dir.join("workspace")),
                 http,
                 streams: Mutex::new(HashMap::new()),
             });
@@ -183,10 +186,11 @@ pub fn run() {
             list_models,
             chat_stream,
             chat_cancel,
-            list_conversations,
-            load_conversation,
-            save_conversation,
-            delete_conversation,
+            load_workspace,
+            save_projects,
+            load_document,
+            save_document,
+            delete_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Theoremis");

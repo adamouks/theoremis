@@ -1,0 +1,11 @@
+/* Generated from the design's style-hover / style-focus attributes. */
+.h1:hover{color:oklch(0.97 0.005 276) !important;background:oklch(1 0 0 / 0.04) !important}
+.h2:hover{background:oklch(1 0 0 / 0.05) !important;color:oklch(0.98 0.005 276) !important}
+.h3:hover{background:oklch(0.99 0.006 80) !important;color:oklch(0.12 0.006 276) !important}
+.h4:hover{border-color:oklch(0.36 0.01 276) !important;color:oklch(0.96 0.005 276) !important}
+.h5:hover{border-color:oklch(0.42 0.01 276) !important;background:oklch(0.18 0.006 276) !important;color:oklch(0.98 0.005 276) !important}
+.h6:hover{color:oklch(0.96 0.04 276) !important}
+.h7:hover{border-color:oklch(0.42 0.01 276) !important;color:oklch(0.98 0.005 276) !important}
+.f8:focus{border-color:oklch(0.62 0.09 276) !important;box-shadow:0 0 0 3px oklch(0.70 0.10 276 / 0.16) !important}
+.h9:hover{background:oklch(0.24 0.008 276) !important}
+.h10:hover{color:oklch(0.97 0.005 276) !important}

@@ -1,13 +1,15 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   ChatMessage,
-  Conversation,
-  ConversationSummary,
+  Doc,
+  DocumentSummary,
+  Project,
   Provider,
   ProviderStatus,
   Settings,
   SettingsUpdate,
   StreamEvent,
+  Workspace,
 } from "./types";
 
 export interface StreamRequest {
@@ -52,11 +54,11 @@ export const api = {
   },
   cancelChat: (requestId: string) => invoke<boolean>("chat_cancel", { requestId }),
 
-  listConversations: () => invoke<ConversationSummary[]>("list_conversations"),
-  loadConversation: (id: string) => invoke<Conversation>("load_conversation", { id }),
-  saveConversation: (conversation: Conversation) =>
-    invoke<void>("save_conversation", { conversation }),
-  deleteConversation: (id: string) => invoke<void>("delete_conversation", { id }),
+  loadWorkspace: () => invoke<Workspace>("load_workspace"),
+  saveProjects: (projects: Project[]) => invoke<void>("save_projects", { projects }),
+  loadDocument: (id: string) => invoke<Doc>("load_document", { id }),
+  saveDocument: (document: Doc) => invoke<DocumentSummary>("save_document", { document }),
+  deleteDocument: (id: string) => invoke<void>("delete_document", { id }),
 };
 
 /** Tauri rejects with the serialized `AppError` string; anything else is unexpected. */

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { PROVIDER_LABELS, type ModelRef, type ProviderStatus } from "../lib/types";
-import { CheckIcon, ChevronDownIcon, RefreshIcon } from "./Icons";
+import { PROVIDER_LABELS, type ModelRef, type Provider, type ProviderStatus } from "../lib/types";
+import { Check, ChevronDown, OllamaMark, OpenAILogo } from "./Icons";
+
+export function ProviderMark({ provider, size = 13 }: { provider: Provider; size?: number }) {
+  return provider === "openai" ? <OpenAILogo size={size} /> : <OllamaMark size={size} />;
+}
 
 interface Props {
   providers: ProviderStatus[];
@@ -11,14 +15,7 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-export function ModelPicker({
-  providers,
-  loading,
-  selected,
-  onSelect,
-  onRefresh,
-  onOpenSettings,
-}: Props) {
+export function ModelPicker({ providers, loading, selected, onSelect, onRefresh, onOpenSettings }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
@@ -40,83 +37,75 @@ export function ModelPicker({
     <div className="model-picker" ref={root}>
       <button
         type="button"
-        className="model-picker__trigger"
-        onClick={() => setOpen((o) => !o)}
+        className="model-pill"
+        title="Collaborator model"
         aria-haspopup="listbox"
         aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
       >
         {selected ? (
           <>
-            <span className={`provider-dot provider-dot--${selected.provider}`} />
-            <span className="model-picker__name">{selected.model}</span>
+            <ProviderMark provider={selected.provider} />
+            <span className="model-pill__model" title={`${PROVIDER_LABELS[selected.provider]} · ${selected.model}`}>
+              {selected.model}
+            </span>
           </>
         ) : (
-          <span className="model-picker__name">{loading ? "Loading models…" : "Choose a model"}</span>
+          <span className="model-pill__model">{loading ? "Connecting…" : "Choose a model"}</span>
         )}
-        <ChevronDownIcon />
+        <ChevronDown size={10} />
       </button>
 
       {open && (
-        <div className="model-picker__menu" role="listbox">
-          <div className="model-picker__menu-head">
-            <span>Models</span>
-            <button
-              type="button"
-              className="icon-button icon-button--small"
-              onClick={onRefresh}
-              title="Refresh models"
-              aria-label="Refresh models"
-              disabled={loading}
-            >
-              <RefreshIcon className={loading ? "spin" : undefined} />
-            </button>
-          </div>
+        <div className="menu menu--right model-menu" role="listbox">
           {providers.map((status) => (
-            <section key={status.provider} className="model-picker__group">
-              <h3>
-                <span className={`provider-dot provider-dot--${status.provider}`} />
-                {PROVIDER_LABELS[status.provider]}
-                {!status.available && <span className="model-picker__badge">Not connected</span>}
-              </h3>
+            <section key={status.provider} className="model-menu__group">
+              <div className="model-menu__head">
+                <ProviderMark provider={status.provider} size={12} />
+                <span>{PROVIDER_LABELS[status.provider]}</span>
+                <span className={`model-menu__state${status.available ? " is-on" : ""}`}>
+                  {status.available ? "CONNECTED" : "NOT CONNECTED"}
+                </span>
+              </div>
               {status.models.map((model) => {
-                const active =
-                  selected?.provider === model.provider && selected.model === model.id;
+                const active = selected?.provider === model.provider && selected.model === model.id;
                 return (
                   <button
                     key={model.id}
                     type="button"
                     role="option"
                     aria-selected={active}
-                    className={`model-picker__item${active ? " is-active" : ""}`}
+                    className={`menu__item${active ? " is-active" : ""}`}
                     onClick={() => {
                       onSelect({ provider: model.provider, model: model.id });
                       setOpen(false);
                     }}
                   >
-                    <span className="model-picker__item-name">{model.id}</span>
-                    {model.detail && <span className="model-picker__detail">{model.detail}</span>}
-                    {active && <CheckIcon />}
+                    <span className="menu__check">{active && <Check />}</span>
+                    <span className="model-menu__id">{model.id}</span>
+                    {model.detail && <span className="menu__hint">{model.detail}</span>}
                   </button>
                 );
               })}
-              {status.message && (
-                <div className="model-picker__note">
-                  <p>{status.message}</p>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => {
-                      setOpen(false);
-                      if (status.provider === "openai") onOpenSettings();
-                      else onRefresh();
-                    }}
-                  >
-                    {status.provider === "openai" ? "Open settings" : "Try again"}
-                  </button>
-                </div>
-              )}
+              {status.message && <p className="model-menu__note">{status.message}</p>}
             </section>
           ))}
+          <div className="menu__divider" />
+          <div className="model-menu__foot">
+            <button type="button" className="text-button" onClick={onRefresh} disabled={loading}>
+              {loading ? "Checking…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setOpen(false);
+                onOpenSettings();
+              }}
+            >
+              Settings
+            </button>
+          </div>
         </div>
       )}
     </div>

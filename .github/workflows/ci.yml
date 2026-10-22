@@ -21,6 +21,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run site:build
 
   backend:
     runs-on: ubuntu-latest

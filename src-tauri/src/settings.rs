@@ -24,6 +24,7 @@ pub struct StoredSettings {
     pub openai_base_url: String,
     pub openai_api_key: Option<String>,
     pub system_prompt: String,
+    pub display_name: String,
     pub last_model: Option<ModelRef>,
 }
 
@@ -53,6 +54,7 @@ pub struct SettingsView {
     pub default_openai_base_url: String,
     pub openai_key: KeyStatus,
     pub system_prompt: String,
+    pub display_name: String,
     pub last_model: Option<ModelRef>,
 }
 
@@ -64,6 +66,7 @@ pub struct SettingsUpdate {
     pub openai_base_url: Option<String>,
     pub openai_api_key: Option<String>,
     pub system_prompt: Option<String>,
+    pub display_name: Option<String>,
     pub last_model: Option<ModelRef>,
 }
 
@@ -149,6 +152,9 @@ fn apply_update(settings: &mut StoredSettings, update: SettingsUpdate) -> AppRes
     if let Some(prompt) = update.system_prompt {
         settings.system_prompt = prompt;
     }
+    if let Some(name) = update.display_name {
+        settings.display_name = name.trim().to_string();
+    }
     if update.last_model.is_some() {
         settings.last_model = update.last_model;
     }
@@ -181,6 +187,7 @@ fn view_of(settings: &StoredSettings, env: &EnvVars) -> SettingsView {
             hint: key.map(|(key, _)| mask_key(&key)),
         },
         system_prompt: settings.system_prompt.clone(),
+        display_name: settings.display_name.clone(),
         last_model: settings.last_model.clone(),
     }
 }

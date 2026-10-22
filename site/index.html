@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Theoremis — Mathematics, reimagined for the age of AI</title>
+    <meta
+      name="description"
+      content="Theoremis is the AI-native workspace for mathematics. Explore conjectures, develop proofs and test every step with an AI collaborator that works inside your document."
+    />
+    <meta property="og:title" content="Theoremis — Mathematics, reimagined for the age of AI" />
+    <meta
+      property="og:description"
+      content="A free, open-source environment for mathematical thought. Works with ChatGPT today."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0d0d10" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <!-- Markup converted from "Theoremis Landing.dc.html" (Claude Design). Hover styles live in src/hover.css. -->
+<div style="min-height:100vh;background:oklch(0.135 0.005 276);color:oklch(0.78 0.008 276);font-family:var(--sans);font-size:15px;line-height:1.5">
+
+<header style="position:sticky;top:0;z-index:50;background:oklch(0.135 0.005 276 / 0.95);border-bottom:1px solid oklch(0.21 0.006 276)">
+<div style="max-width:1200px;margin:0 auto;height:60px;padding:0 clamp(20px,3vw,40px);box-sizing:border-box;display:flex;align-items:center;gap:28px">
+<div data-go="top" role="link" tabindex="0" style="display:flex;align-items:baseline;flex:none;cursor:pointer">
+<span style="font-family:var(--serif);font-size:20px;font-weight:500;letter-spacing:0.004em;color:oklch(0.96 0.01 80)">Theoremis</span>
+<span style="width:6px;height:8px;margin-left:4px;background:oklch(0.96 0.01 80)"></span>
+</div>
+<nav style="flex:1;min-width:0;height:30px;overflow:hidden;display:flex;flex-wrap:wrap;align-items:center;gap:2px;font-size:14px">
+<span class="h1" data-go="what" role="link" tabindex="0" style="height:30px;display:flex;align-items:center;padding:0 10px;border-radius:6px;color:oklch(0.76 0.008 276);cursor:pointer">Product</span>
+<span class="h1" data-go="workspace" role="link" tabindex="0" style="height:30px;display:flex;align-items:center;padding:0 10px;border-radius:6px;color:oklch(0.76 0.008 276);cursor:pointer">Workspace</span>
+<span class="h1" data-go="chatgpt" role="link" tabindex="0" style="height:30px;display:flex;align-items:center;padding:0 10px;border-radius:6px;color:oklch(0.76 0.008 276);cursor:pointer">ChatGPT</span>
+<span class="h1" data-go="principles" role="link" tabindex="0" style="height:30px;display:flex;align-items:center;padding:0 10px;border-radius:6px;color:oklch(0.76 0.008 276);cursor:pointer">Open source</span>
+</nav>
+<div style="display:flex;align-items:center;gap:8px;flex:none">
+<a class="h2" href="https://github.com/adamouks/theoremis" target="_blank" rel="noopener" style="height:34px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:8px;font-size:14px;color:oklch(0.86 0.006 276)">GitHub<span style="font-size:12px;color:oklch(0.62 0.008 276)">↗</span></a>
+<a class="h3" href="https://github.com/adamouks/theoremis/releases" target="_blank" rel="noopener" style="height:34px;display:flex;align-items:center;padding:0 14px;border-radius:8px;background:oklch(0.95 0.01 80);font-size:14px;font-weight:500;color:oklch(0.16 0.006 276)">Download</a>
+</div>
+</div>
+</header>
+
+<div style="max-width:1200px;margin:0 auto;border-left:1px solid oklch(0.195 0.006 276);border-right:1px solid oklch(0.195 0.006 276)">
+
+<section style="position:relative;padding:clamp(56px,8vw,104px) clamp(20px,3vw,40px) 0;overflow:hidden">
+
+<div style="position:absolute;inset:0;background-image:linear-gradient(to right,oklch(1 0 0 / 0.04) 1px,transparent 1px),linear-gradient(to bottom,oklch(1 0 0 / 0.04) 1px,transparent 1px);background-size:64px 64px;background-position:-1px -1px;-webkit-mask-image:radial-gradient(ellipse 75% 55% at 30% 12%,#000 20%,transparent 75%);mask-image:radial-gradient(ellipse 75% 55% at 30% 12%,#000 20%,transparent 75%);pointer-events:none"></div>
+
+<div id="hero-glow" style="position:absolute;left:50%;top:clamp(380px,46vw,560px);width:min(1100px,110%);height:640px;transform:translateX(-50%);background:radial-gradient(closest-side,oklch(0.52 0.12 276 / 0.20),oklch(0.52 0.12 276 / 0.06) 55%,transparent);pointer-events:none;transition:transform 1s cubic-bezier(.2,.7,.2,1)"></div>
+
+<div style="position:relative">
+<div class="h4" data-go="chatgpt" role="link" tabindex="0" style="display:inline-flex;align-items:center;gap:10px;height:30px;padding:0 12px 0 10px;border-radius:999px;border:1px solid oklch(0.27 0.008 276);background:oklch(0.16 0.006 276);font-size:13px;color:oklch(0.80 0.007 276);cursor:pointer">
+<img src="/assets/logos/openai.svg" alt="" style="width:14px;height:14px;flex:none;display:block">
+<span>Works with ChatGPT</span>
+<span style="width:1px;height:12px;background:oklch(0.30 0.008 276)"></span>
+<span style="display:flex;align-items:center;gap:5px;opacity:0.72"><img src="/assets/logos/poe.svg" alt="" style="width:12px;height:12px;flex:none;display:block"><img src="/assets/logos/openrouter.svg" alt="" style="width:12px;height:12px;flex:none;display:block"></span>
+<span style="color:oklch(0.66 0.008 276)">Poe and OpenRouter coming soon</span>
+<span style="color:oklch(0.66 0.008 276)">→</span>
+</div>
+<h1 style="margin:28px 0 0;max-width:11.5em;font-family:var(--serif);font-weight:400;font-size:clamp(46px,6.6vw,90px);line-height:1.02;letter-spacing:-0.028em;color:oklch(0.97 0.01 80);text-wrap:balance">Mathematics, <em style="font-weight:380">reimagined</em> for the age of AI.</h1>
+<div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:28px 48px;margin-top:30px">
+<p style="margin:0;flex:1 1 420px;max-width:580px;font-size:clamp(17px,1.5vw,19.5px);line-height:1.58;color:oklch(0.78 0.008 276);text-wrap:pretty">Theoremis is the AI-native workspace for mathematics. Explore conjectures, develop proofs and test every step with an AI collaborator that works inside your document.</p>
+<div class="hero-actions" style="display:flex;flex-direction:column;gap:14px;flex:none">
+<div style="display:flex;flex-wrap:wrap;gap:10px">
+<a class="h3" href="https://github.com/adamouks/theoremis/releases" target="_blank" rel="noopener" style="height:46px;display:flex;align-items:center;gap:10px;padding:0 20px;border-radius:9px;background:oklch(0.95 0.01 80);box-shadow:0 1px 0 oklch(1 0 0 / 0.5) inset,0 8px 24px -12px oklch(0.95 0.01 80 / 0.35);font-size:15px;font-weight:500;color:oklch(0.15 0.006 276)">Download Theoremis<svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 2v7.5M2.75 6.5 6 9.75 9.25 6.5"></path></svg></a>
+<a class="h5" href="https://github.com/adamouks/theoremis" target="_blank" rel="noopener" style="height:46px;display:flex;align-items:center;gap:8px;padding:0 18px;border-radius:9px;border:1px solid oklch(0.30 0.008 276);background:oklch(0.16 0.006 276);font-size:15px;color:oklch(0.92 0.005 276)">View on GitHub<span style="font-size:13px;color:oklch(0.62 0.008 276)">↗</span></a>
+</div>
+<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(0.66 0.008 276)"><span style="width:6px;height:8px;background:oklch(0.80 0.01 80)"></span>Free and open source · Local-first desktop app</div>
+</div>
+</div>
+</div>
+
+<div id="hero-wrap" style="position:relative;margin-top:clamp(48px,6vw,72px);height:720px">
+<div id="hero-frame" style="position:absolute;left:0;top:0;width:1200px;height:720px;transform-origin:0 0">
+<div id="hero-par" style="width:1200px;height:720px;transition:transform .9s cubic-bezier(.2,.7,.2,1)">
+<div id="hx-win" style="position:relative;width:1200px;height:720px;border-radius:14px;overflow:hidden;background:oklch(0.185 0.006 276);box-shadow:0 0 0 1px oklch(0.29 0.008 276),inset 0 1px 0 oklch(1 0 0 / 0.06),0 60px 120px -40px oklch(0 0 0 / 0.9),0 24px 48px -28px oklch(0 0 0 / 0.75);font-size:13px;line-height:1.4;color:oklch(0.92 0.005 276)">
+
+<div style="display:flex;height:720px">
+<div style="width:196px;flex:none;box-sizing:border-box;background:oklch(0.158 0.006 276);border-right:1px solid oklch(0.235 0.007 276);display:flex;flex-direction:column;gap:1px;font-size:12.5px">
+<div style="height:44px;flex:none;display:flex;align-items:center;padding:0 16px;margin-bottom:10px"><div style="display:flex;gap:8px"><span style="width:11px;height:11px;border-radius:50%;background:oklch(0.31 0.006 276)"></span><span style="width:11px;height:11px;border-radius:50%;background:oklch(0.31 0.006 276)"></span><span style="width:11px;height:11px;border-radius:50%;background:oklch(0.31 0.006 276)"></span></div></div>
+<div style="padding:0 18px 8px;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.64 0.008 276)">PROJECTS</div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;margin:0 10px;padding:0 8px;font-weight:500;color:oklch(0.90 0.005 276)"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="color:oklch(0.62 0.008 276);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round"><path d="M3 4.5 6 7.5l3-3"></path></svg>Figurate numbers</div>
+<div style="display:flex;flex-direction:column;gap:1px;margin:0 10px 0 23px;padding-left:5px;border-left:1px solid oklch(0.25 0.007 276)">
+<div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;background:oklch(0.235 0.009 276);color:oklch(0.95 0.005 276);white-space:nowrap;overflow:hidden"><span style="width:7px;height:7px;flex:none;box-sizing:border-box;border-radius:50%;border:1.25px solid oklch(0.86 0.006 276);background:linear-gradient(90deg,oklch(0.86 0.006 276) 50%,transparent 50%)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Sums of odd integers</span></div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 6px;color:oklch(0.74 0.007 276);white-space:nowrap;overflow:hidden"><span style="width:6px;height:6px;flex:none;margin:0 0.5px;background:oklch(0.88 0.01 80)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Nicomachus’s theorem</span></div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 6px;color:oklch(0.74 0.007 276);white-space:nowrap;overflow:hidden"><span style="width:7px;height:7px;flex:none;border-radius:50%;background:oklch(0.70 0.008 276)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Faulhaber’s formula</span></div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 6px;color:oklch(0.74 0.007 276);white-space:nowrap;overflow:hidden"><span style="width:7px;height:7px;flex:none;box-sizing:border-box;border-radius:50%;border:1.25px solid oklch(0.70 0.008 276)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Centered squares</span></div>
+</div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;margin:0 10px;padding:0 8px;color:oklch(0.74 0.007 276)"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="color:oklch(0.58 0.008 276);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round"><path d="M4.5 3 7.5 6l-3 3"></path></svg>Additive bases</div>
+<div style="height:26px;display:flex;align-items:center;gap:7px;margin:0 10px;padding:0 8px;color:oklch(0.74 0.007 276)"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="color:oklch(0.58 0.008 276);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round"><path d="M4.5 3 7.5 6l-3 3"></path></svg>Partition congruences</div>
+</div>
+
+<div style="position:relative;width:564px;flex:none;box-sizing:border-box">
+<div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 20px;border-bottom:1px solid oklch(0.235 0.007 276);margin-bottom:26px">
+<div style="font-size:12.5px;color:oklch(0.72 0.008 276);white-space:nowrap">Figurate numbers<span style="color:oklch(0.44 0.008 276);margin:0 7px">/</span><span style="color:oklch(0.92 0.005 276)">Sums of odd integers</span></div>
+<div style="display:flex;align-items:center;gap:12px">
+<span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:oklch(0.66 0.008 276);white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:oklch(0.80 0.01 80)"></span>Saved locally</span>
+<span style="display:flex;gap:2px;padding:2px;border-radius:6px;background:oklch(0.165 0.006 276);border:1px solid oklch(0.25 0.007 276);font-size:11.5px"><span style="height:20px;padding:0 8px;display:flex;align-items:center;border-radius:4px;background:oklch(0.27 0.009 276);color:oklch(0.95 0.005 276)">Rendered</span><span style="height:20px;padding:0 8px;display:flex;align-items:center;color:oklch(0.68 0.008 276)">TeX</span></span>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:104px 424px">
+<div></div>
+<div>
+<div style="font-size:11.5px;color:oklch(0.68 0.008 276)">Élise Moreau · Revision 7 · Edited 2 min ago</div>
+<div style="margin-top:8px;font-family:var(--serif);font-size:25px;font-weight:460;letter-spacing:-0.012em;color:oklch(0.96 0.012 80)">Sums of odd integers</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding:24px 18px 0 0">
+<span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;line-height:1;letter-spacing:0.08em;color:oklch(0.74 0.008 276)"><span style="width:6px;height:6px;box-sizing:border-box;border-radius:50%;border:1.25px solid currentColor"></span>OPEN</span>
+<span style="font-size:10.5px;color:oklch(0.64 0.008 276);white-space:nowrap">tested to <span data-tex="10^4"></span></span>
+</div>
+<p style="margin:18px 0 0;font-family:var(--serif);font-size:15px;line-height:1.62;color:oklch(0.93 0.012 80)"><span style="font-weight:650">Conjecture 1.</span> <em>For every integer <span style="white-space:nowrap"><span data-tex="n\ge 1"></span>,</span> the sum of the first <span data-tex="n"></span> odd positive integers is <span style="white-space:nowrap"><span data-tex="n^2"></span>:</span></em></p>
+<div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;padding:10px 0 4px;font-size:15.5px;color:oklch(0.93 0.012 80)"><span></span><span data-tex="\displaystyle\sum_{k=1}^{n}(2k-1)=n^2"></span><span style="justify-self:end;font-family:var(--serif);font-size:14px;color:oklch(0.72 0.01 80)">(1)</span></div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding:22px 18px 0 0">
+<span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;line-height:1;letter-spacing:0.08em;color:oklch(0.74 0.008 276)"><span style="width:6px;height:6px;box-sizing:border-box;border-radius:50%;border:1.25px solid currentColor;background:linear-gradient(90deg,currentColor 50%,transparent 50%)"></span>DRAFT</span>
+<span style="font-size:10.5px;color:oklch(0.64 0.008 276);white-space:nowrap">not formalized</span>
+</div>
+<p style="margin:16px 0 0;font-family:var(--serif);font-size:15px;line-height:1.62;color:oklch(0.93 0.012 80)"><em>Proof.</em> By induction on <span style="white-space:nowrap"><span data-tex="n"></span>.</span> The case <span data-tex="n=1"></span> reads <span style="white-space:nowrap"><span data-tex="1=1^2"></span>.</span> Suppose (1) holds for some <span style="white-space:nowrap"><span data-tex="n\ge 1"></span>.</span> Adding the next odd number, <span style="white-space:nowrap"><span data-tex="2n+1"></span>,</span> to both sides gives</p>
+<div></div>
+<div style="position:relative;margin:12px -12px 0;padding:11px 12px">
+<div class="dc-if" data-if="selOn">
+<div style="position:absolute;inset:0;border-radius:6px;background:oklch(0.62 0.13 276 / 0.15);box-shadow:inset 0 0 0 1px oklch(0.70 0.11 276 / 0.18);animation:thl-fade .45s ease both;pointer-events:none">
+<span style="position:absolute;left:-1px;top:-1px;width:9px;height:9px;border-left:1.5px solid oklch(0.76 0.10 276);border-top:1.5px solid oklch(0.76 0.10 276);border-top-left-radius:6px"></span>
+<span style="position:absolute;right:-1px;top:-1px;width:9px;height:9px;border-right:1.5px solid oklch(0.76 0.10 276);border-top:1.5px solid oklch(0.76 0.10 276);border-top-right-radius:6px"></span>
+<span style="position:absolute;left:-1px;bottom:-1px;width:9px;height:9px;border-left:1.5px solid oklch(0.76 0.10 276);border-bottom:1.5px solid oklch(0.76 0.10 276);border-bottom-left-radius:6px"></span>
+<span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-right:1.5px solid oklch(0.76 0.10 276);border-bottom:1.5px solid oklch(0.76 0.10 276);border-bottom-right-radius:6px"></span>
+</div>
+</div>
+<div class="dc-if" data-if="ringOn" hidden><span style="position:absolute;inset:-4px;border-radius:9px;box-shadow:0 0 0 1.5px oklch(0.72 0.10 75 / 0.75);animation:thl-fade .4s ease both;pointer-events:none"></span></div>
+<div class="dc-if" data-if="pinOn"><span style="position:absolute;right:-9px;top:-9px;z-index:2;width:18px;height:18px;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.035 75);border:1px solid oklch(0.72 0.10 75 / 0.85);color:oklch(0.90 0.07 75);font-family:var(--mono);font-size:10.5px;font-weight:500;line-height:1;animation:thl-pop .35s cubic-bezier(.2,.9,.3,1.3) both">1</span></div>
+<div class="dc-if" data-if="pinDoneOn" hidden><span style="position:absolute;right:-9px;top:-9px;z-index:2;width:18px;height:18px;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.25 0.006 276);border:1px solid oklch(0.44 0.008 276);color:oklch(0.72 0.008 276);font-family:var(--mono);font-size:10.5px;font-weight:500;line-height:1">1</span></div>
+<div class="dc-if" data-if="tbOn" hidden>
+<div style="position:absolute;right:18px;top:-44px;z-index:3;display:flex;align-items:center;gap:1px;padding:3px;border-radius:8px;background:oklch(0.245 0.008 276);border:1px solid oklch(0.33 0.01 276);box-shadow:0 12px 30px oklch(0 0 0 / 0.45);font-size:12px;white-space:nowrap;animation:thl-pop .25s ease both;transform-origin:80% 100%">
+<span style="display:flex;align-items:center;gap:7px;height:26px;padding:0 8px;color:oklch(0.95 0.005 276)"><span style="width:8px;height:8px;box-sizing:border-box;border:1.5px solid oklch(0.70 0.10 276)"></span>Ask<span style="font-family:var(--mono);font-size:10.5px;color:oklch(0.66 0.008 276)">⌘L</span></span>
+<span style="width:1px;height:16px;margin:0 3px;background:oklch(0.35 0.01 276)"></span>
+<span style="height:26px;display:flex;align-items:center;padding:0 8px;color:oklch(0.84 0.006 276)">Explore</span>
+<span id="hx-gaps" style="height:26px;display:flex;align-items:center;padding:0 8px;border-radius:5px;background:oklch(0.31 0.012 276);color:oklch(0.97 0.005 276)">Find gaps</span>
+<span style="height:26px;display:flex;align-items:center;padding:0 8px;color:oklch(0.84 0.006 276)">Challenge</span>
+<span style="height:26px;display:flex;align-items:center;padding:0 8px;color:oklch(0.84 0.006 276)">Formalize</span>
+</div>
+</div>
+<div class="dc-if" data-if="eqOrig">
+<div style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto minmax(0,1fr);row-gap:8px;align-items:baseline;font-size:15.5px;color:oklch(0.93 0.012 80)">
+<span></span><span id="hx-eq2" style="justify-self:end" data-tex="\displaystyle\sum_{k=1}^{n+1}(2k-1)"></span><span data-tex="\displaystyle {}=n^2+2n+1"></span><span style="justify-self:end;font-family:var(--serif);font-size:14px;color:oklch(0.72 0.01 80)">(2)</span>
+<span></span><span></span><span data-tex="\displaystyle {}=(n+1)^2."></span><span style="justify-self:end;font-family:var(--serif);font-size:14px;color:oklch(0.72 0.01 80)">(3)</span>
+</div>
+</div>
+<div class="dc-if" data-if="eqNew" hidden>
+<div style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto minmax(0,1fr);row-gap:8px;align-items:baseline;font-size:15.5px;color:oklch(0.93 0.012 80);animation:thl-up .5s ease both">
+<span></span><span id="hx-eq2b" style="justify-self:end" data-tex="\displaystyle\sum_{k=1}^{n+1}(2k-1)"></span><span style="border-radius:4px;animation:thl-flash 1.8s ease-out both" data-tex="\displaystyle {}=\sum_{k=1}^{n}(2k-1)+(2n+1)"></span><span style="justify-self:end;font-family:var(--serif);font-size:14px;color:oklch(0.72 0.01 80)">(2)</span>
+<span></span><span></span><span style="display:flex;align-items:baseline;gap:14px"><span data-tex="\displaystyle {}=n^2+2n+1"></span><span style="font-family:var(--serif);font-size:13px;font-style:italic;color:oklch(0.72 0.01 80)">by (1)</span></span><span></span>
+<span></span><span></span><span data-tex="\displaystyle {}=(n+1)^2."></span><span style="justify-self:end;font-family:var(--serif);font-size:14px;color:oklch(0.72 0.01 80)">(3)</span>
+</div>
+</div>
+</div>
+<div></div>
+<p style="margin:12px 0 0;display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-family:var(--serif);font-size:15px;line-height:1.62;color:oklch(0.93 0.012 80)"><span>Hence (1) holds for <span style="white-space:nowrap"><span data-tex="n+1"></span>,</span> and therefore for every <span style="white-space:nowrap"><span data-tex="n\ge 1"></span>.<span id="hx-caret"><span class="caret" aria-hidden="true"></span></span></span></span><span style="width:8px;height:10px;flex:none;box-sizing:border-box;border:1.25px solid oklch(0.88 0.012 80)"></span></p>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding:36px 18px 0 0"><span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;line-height:1;letter-spacing:0.08em;color:oklch(0.80 0.06 276)"><span style="width:6px;height:6px;box-sizing:border-box;border:1.25px solid oklch(0.72 0.10 276)"></span>SUGGESTED</span><span style="font-size:10.5px;color:oklch(0.70 0.04 276);white-space:nowrap">not verified</span></div>
+<div style="position:relative;margin:26px -12px 0;padding:11px 12px 10px;border-radius:7px;border:1px dashed oklch(0.70 0.10 276 / 0.5);background:oklch(0.70 0.10 276 / 0.05)">
+<span style="position:absolute;right:-9px;top:-9px;width:18px;height:18px;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.04 276);border:1px solid oklch(0.70 0.10 276 / 0.9);color:oklch(0.90 0.05 276);font-family:var(--mono);font-size:10.5px;font-weight:500;line-height:1">2</span>
+<p style="margin:0;font-size:13px;line-height:1.55;color:oklch(0.87 0.035 276)"><span style="font-weight:600">Remark 2</span> (a direct proof). Since <span style="white-space:nowrap"><span data-tex="2k-1=k^2-(k-1)^2"></span>,</span> the sum in (1) telescopes:</p>
+<div style="display:flex;justify-content:center;padding:8px 0 0;font-size:14px;color:oklch(0.87 0.035 276)"><span data-tex="\displaystyle\sum_{k=1}^{n}(2k-1)=\sum_{k=1}^{n}\bigl(k^2-(k-1)^2\bigr)=n^2."></span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding-top:8px;border-top:1px dashed oklch(0.70 0.10 276 / 0.24)">
+<span style="display:flex;align-items:center;gap:7px;font-size:11px;color:oklch(0.80 0.007 276);white-space:nowrap"><span style="width:6px;height:6px;flex:none;background:oklch(0.90 0.01 80)"></span>Lemma verified in Mathlib · this use is not</span>
+<span style="display:flex;align-items:center;gap:2px;font-size:11.5px"><span style="height:22px;display:flex;align-items:center;padding:0 7px;color:oklch(0.78 0.008 276)">Reject</span><span style="height:22px;display:flex;align-items:center;padding:0 7px;color:oklch(0.78 0.008 276)">Edit</span><span style="height:22px;display:flex;align-items:center;margin-left:3px;padding:0 9px;border:1px solid oklch(0.46 0.02 276);border-radius:5px;background:oklch(0.30 0.014 276);color:oklch(0.97 0.005 276);font-weight:500">Accept</span></span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="width:440px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:oklch(0.168 0.006 276);border-left:1px solid oklch(0.25 0.007 276)">
+<div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 18px;border-bottom:1px solid oklch(0.235 0.007 276)">
+<div style="display:flex;align-items:center;gap:9px"><span style="width:9px;height:9px;box-sizing:border-box;border:1.5px solid oklch(0.70 0.10 276)"></span><span style="font-weight:500;color:oklch(0.94 0.005 276)">Collaborator</span><span style="color:oklch(0.44 0.008 276)">/</span><span style="color:oklch(0.72 0.008 276)">Review</span></div>
+<span title="Collaborator model" style="display:flex;align-items:center;gap:7px;height:26px;padding:0 7px 0 8px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.19 0.006 276);font-size:12px;color:oklch(0.92 0.005 276)"><img src="/assets/logos/openai.svg" alt="" style="width:13px;height:13px;flex:none;display:block"><span style="font-weight:500">ChatGPT</span><span style="width:1px;height:12px;background:oklch(0.33 0.008 276)"></span><span style="color:oklch(0.78 0.008 276)">GPT-6.1 Sol</span><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="flex:none;color:oklch(0.62 0.008 276);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round"><path d="M3 4.5 6 7.5l3-3"></path></svg></span>
+</div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+<div class="dc-if" data-if="emptyOn" hidden>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;animation:thl-fade .5s ease both">
+<span style="width:12px;height:12px;box-sizing:border-box;border:1.5px solid oklch(0.70 0.10 276)"></span>
+<span style="max-width:240px;font-size:13px;line-height:1.55;color:oklch(0.74 0.008 276)">Select a step in your proof to ask about it, find gaps, or challenge it.</span>
+<span style="font-family:var(--mono);font-size:10.5px;color:oklch(0.62 0.008 276)">⌘L</span>
+</div>
+</div>
+<div class="dc-if" data-if="userOn">
+<div style="display:flex;flex-direction:column;gap:8px;animation:thl-up .45s ease both">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:18px;height:18px;border-radius:50%;background:oklch(0.36 0.03 60);display:grid;place-items:center;font-size:8px;font-weight:600;color:oklch(0.95 0.012 80)">ÉM</span><span style="font-size:12px;font-weight:500;color:oklch(0.86 0.007 276)">Élise</span><span style="font-size:11.5px;color:oklch(0.64 0.008 276)">10:42</span></div>
+<div style="position:relative;border-radius:6px;background:oklch(0.62 0.13 276 / 0.11);box-shadow:inset 0 0 0 1px oklch(0.70 0.11 276 / 0.14)">
+<div style="display:flex;justify-content:space-between;padding:9px 12px 0;font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.82 0.05 276)"><span>SELECTION · PROOF (2)–(3)</span><span style="color:oklch(0.68 0.008 276)">USES (1)</span></div>
+<div style="display:flex;justify-content:center;padding:10px 12px 11px;font-size:11.5px;color:oklch(0.93 0.012 80)"><span data-tex="\displaystyle\sum_{k=1}^{n+1}(2k-1)=n^2+2n+1=(n+1)^2"></span></div>
+</div>
+<div style="font-family:var(--serif);font-size:14px;line-height:1.5;color:oklch(0.93 0.012 80)">Is (2) fully justified as written?</div>
+</div>
+</div>
+<div class="dc-if" data-if="thinkingOn" hidden>
+<div style="display:flex;align-items:center;gap:9px;font-size:12px;color:oklch(0.80 0.05 276);animation:thl-fade .4s ease both"><span style="width:9px;height:9px;box-sizing:border-box;border:1.5px solid oklch(0.70 0.10 276)"></span>Reviewing with GPT-6.1 Sol<span style="display:flex;gap:3px"><span style="width:4px;height:4px;border-radius:50%;background:currentColor;animation:thl-dot 1.1s infinite"></span><span style="width:4px;height:4px;border-radius:50%;background:currentColor;animation:thl-dot 1.1s .18s infinite"></span><span style="width:4px;height:4px;border-radius:50%;background:currentColor;animation:thl-dot 1.1s .36s infinite"></span></span></div>
+</div>
+<div class="dc-if" data-if="aiOn">
+<div style="position:relative;display:flex;flex-direction:column;gap:9px;animation:thl-up .45s ease both">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;box-sizing:border-box;border:1.5px solid oklch(0.70 0.10 276)"></span><span style="font-size:12px;font-weight:500;color:oklch(0.88 0.04 276)">Collaborator</span><span style="font-size:11.5px;color:oklch(0.64 0.008 276)">Find gaps</span></div>
+<span style="font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.80 0.06 276);border:1px dashed oklch(0.70 0.10 276 / 0.55);border-radius:4px;padding:2px 6px">NOT VERIFIED</span>
+</div>
+<div style="font-size:12.5px;line-height:1.55;color:oklch(0.87 0.035 276)">Sound overall. One step is left implicit.</div>
+<div style="position:relative;display:flex;flex-direction:column;gap:7px;margin-top:3px">
+<div class="dc-if" data-if="ringOn" hidden><span style="position:absolute;inset:-7px -9px;border-radius:8px;background:oklch(0.72 0.10 75 / 0.05);box-shadow:inset 0 0 0 1px oklch(0.72 0.10 75 / 0.34);animation:thl-fade .4s ease both;pointer-events:none"></span></div>
+<div id="hx-f1" style="display:flex;align-items:center;gap:8px"><span style="width:17px;height:17px;flex:none;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.035 75);border:1px solid oklch(0.72 0.10 75 / 0.85);color:oklch(0.90 0.07 75);font-family:var(--mono);font-size:10px;font-weight:500;line-height:1">1</span><span style="flex:1;font-size:12.5px;font-weight:600;color:oklch(0.93 0.02 276)">Implicit step in (2)</span><span style="font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.80 0.07 75)">MINOR</span></div>
+<div style="font-size:12.5px;line-height:1.55;color:oklch(0.87 0.035 276)">(2) splits off the term <span data-tex="k=n+1"></span> and applies the hypothesis in one step. Both moves are valid; the use of (1) is not shown.</div>
+</div>
+</div>
+</div>
+<div class="dc-if" data-if="diffOn">
+<div style="display:flex;flex-direction:column;gap:9px;animation:thl-up .45s .05s ease both">
+<div style="border-radius:7px;border:1px solid oklch(0.27 0.008 276);overflow:hidden;font-size:12px">
+<div style="display:grid;grid-template-columns:62px minmax(0,1fr);align-items:center;min-height:34px;padding:3px 11px;background:oklch(0.176 0.006 276);border-bottom:1px solid oklch(0.27 0.008 276)"><span style="font-family:var(--mono);font-size:9px;letter-spacing:0.07em;color:oklch(0.66 0.008 276)">ORIGINAL</span><span style="color:oklch(0.82 0.01 80)" data-tex="\textstyle\sum_{k=1}^{n+1}(2k-1)=n^2+2n+1"></span></div>
+<div style="display:grid;grid-template-columns:62px minmax(0,1fr);row-gap:4px;align-items:baseline;padding:8px 11px;background:oklch(0.70 0.10 276 / 0.07)"><span style="font-family:var(--mono);font-size:9px;letter-spacing:0.07em;color:oklch(0.80 0.06 276)">PROPOSED</span><span style="color:oklch(0.88 0.035 276)" data-tex="\textstyle\sum_{k=1}^{n+1}(2k-1)=\htmlStyle{background:rgba(132,144,228,0.22);box-shadow:0 0 0 2px rgba(132,144,228,0.22);border-radius:2px;}{\textstyle\sum_{k=1}^{n}(2k-1)+(2n+1)}"></span><span></span><span style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:oklch(0.88 0.035 276)"><span data-tex="\textstyle\phantom{\sum_{k=1}^{n+1}(2k-1)}=n^2+(2n+1)"></span><span style="font-size:10.5px;line-height:1;padding:3px 6px;border-radius:4px;background:rgba(132,144,228,0.22);color:oklch(0.90 0.035 276)">by (1)</span></span></div>
+</div>
+<div style="display:flex;align-items:center;gap:2px">
+<span id="hx-accept" style="height:25px;display:flex;align-items:center;padding:0 10px;border:1px solid oklch(0.46 0.02 276);border-radius:6px;background:oklch(0.30 0.014 276);color:oklch(0.97 0.005 276);font-size:12px;font-weight:500">Accept</span>
+<span style="height:25px;display:flex;align-items:center;padding:0 9px;color:oklch(0.78 0.008 276);font-size:12px">Edit</span>
+<span style="height:25px;display:flex;align-items:center;padding:0 9px;color:oklch(0.78 0.008 276);font-size:12px">Reject</span>
+<span style="flex:1"></span>
+<span style="height:25px;display:flex;align-items:center;padding:0 9px;border-radius:6px;background:oklch(0.235 0.008 276);box-shadow:inset 0 0 0 1px oklch(0.30 0.009 276);color:oklch(0.92 0.005 276);font-size:12px">Compare</span>
+</div>
+</div>
+</div>
+<div class="dc-if" data-if="doneOn" hidden>
+<div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:6px;border:1px solid oklch(0.27 0.008 276);font-size:12px;color:oklch(0.84 0.007 276);animation:thl-up .45s ease both"><span style="width:7px;height:7px;flex:none;border-radius:50%;background:oklch(0.84 0.01 80)"></span><span style="flex:1">Accepted · (2) now shows both steps</span><span style="color:oklch(0.80 0.07 276)">Undo</span></div>
+</div>
+<div class="dc-if" data-if="aiOn">
+<div style="display:flex;align-items:center;gap:8px;margin-top:2px;padding-top:12px;border-top:1px solid oklch(0.235 0.007 276);animation:thl-up .45s .1s ease both"><span style="width:17px;height:17px;flex:none;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.04 276);border:1px solid oklch(0.70 0.10 276 / 0.9);color:oklch(0.90 0.05 276);font-family:var(--mono);font-size:10px;font-weight:500;line-height:1">2</span><span style="flex:1;font-size:12.5px;font-weight:600;color:oklch(0.93 0.02 276)">A shorter route: telescoping</span><span style="font-size:11.5px;color:oklch(0.70 0.008 276)">Remark 2 · pending</span></div>
+</div>
+</div>
+<div style="flex:none;padding:12px 14px 14px;border-top:1px solid oklch(0.235 0.007 276)">
+<div style="display:flex;flex-direction:column;border-radius:10px;border:1px solid oklch(0.30 0.009 276);background:oklch(0.196 0.006 276)">
+<div style="display:flex;align-items:center;gap:6px;height:30px;padding:8px 8px 0;box-sizing:border-box">
+<div class="dc-if" data-if="chipOn"><span style="display:flex;align-items:center;height:22px;padding:0 8px;border-radius:5px;background:oklch(0.70 0.10 276 / 0.15);color:oklch(0.88 0.04 276);font-size:11px;animation:thl-pop .3s ease both">Selection · (2)–(3)</span></div>
+<span style="display:flex;align-items:center;height:22px;padding:0 8px;box-sizing:border-box;border-radius:5px;border:1px dashed oklch(0.36 0.01 276);color:oklch(0.68 0.008 276);font-size:11px">+ Context</span>
+</div>
+<div style="padding:9px 12px 0;height:30px;box-sizing:border-box;font-family:var(--serif);font-size:13.5px;color:oklch(0.60 0.008 276)">Ask a follow-up, or challenge a step…</div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px 8px">
+<div style="display:flex;gap:4px"><span style="height:24px;display:flex;align-items:center;padding:0 8px;border-radius:6px;border:1px solid oklch(0.31 0.009 276);background:oklch(0.215 0.007 276);color:oklch(0.86 0.006 276);font-size:11.5px">Explore</span><span style="height:24px;display:flex;align-items:center;padding:0 8px;border-radius:6px;border:1px solid oklch(0.31 0.009 276);background:oklch(0.215 0.007 276);color:oklch(0.86 0.006 276);font-size:11.5px">Find gaps</span><span style="height:24px;display:flex;align-items:center;padding:0 8px;border-radius:6px;border:1px solid oklch(0.31 0.009 276);background:oklch(0.215 0.007 276);color:oklch(0.86 0.006 276);font-size:11.5px">Challenge</span><span style="height:24px;display:flex;align-items:center;padding:0 8px;border-radius:6px;border:1px solid oklch(0.31 0.009 276);background:oklch(0.215 0.007 276);color:oklch(0.86 0.006 276);font-size:11.5px">Formalize</span></div>
+<span style="width:26px;height:26px;display:grid;place-items:center;border-radius:7px;background:oklch(0.88 0.01 80);color:oklch(0.20 0.006 276)"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><path d="M6 10V2.5M2.75 5.5 6 2.25 9.25 5.5"></path></svg></span>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dc-if" data-if="dipping" hidden><div style="position:absolute;left:197px;right:0;top:45px;bottom:0;z-index:15;background:oklch(0.185 0.006 276);animation:thl-dip .72s ease both;pointer-events:none"></div></div>
+<div class="dc-if" data-if="cursorOn" hidden>
+<div id="hero-cursor" style="position:absolute;left:0;top:0;z-index:20;pointer-events:none;transform:translate(0px,0px);transition:transform 1.05s cubic-bezier(.45,.05,.2,1)">
+<div class="dc-if" data-if="clicking" hidden><span style="position:absolute;left:-15px;top:-15px;width:30px;height:30px;box-sizing:border-box;border-radius:50%;border:1.5px solid oklch(0.82 0.08 276);animation:thl-ring .7s ease-out both"></span></div>
+<svg width="18" height="22" viewBox="0 0 18 22" style="display:block;margin:-2px 0 0 -2px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))"><path d="M2 2v15.5l4.2-4 2.9 6.4 2.6-1.2-2.9-6.3h5.8z" fill="#f4f2ed" stroke="#121216" style="stroke-width:1.2;stroke-linejoin:round"></path></svg>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p style="position:relative;margin:18px 0 0;padding-bottom:clamp(64px,8vw,104px);font-family:var(--serif);font-size:13.5px;font-style:italic;color:oklch(0.66 0.008 276)"><span style="font-style:normal;font-weight:600;color:oklch(0.80 0.01 80)">Fig. 1.</span> A review in progress. The collaborator flags an implicit step; the author compares, then accepts the revision.</p>
+</section>
+
+<section id="what" style="border-top:1px solid oklch(0.21 0.006 276);padding:clamp(72px,9vw,128px) clamp(20px,3vw,40px)">
+<div style="display:flex;flex-wrap:wrap;gap:24px 48px">
+<div style="flex:1 1 200px;max-width:250px;display:flex;align-items:baseline;gap:12px;padding-top:12px"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276)">§1</span><span style="font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:oklch(0.66 0.008 276)">What it does</span></div>
+<div style="flex:3 1 560px;min-width:0">
+<h2 style="margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(32px,3.9vw,52px);line-height:1.08;letter-spacing:-0.02em;color:oklch(0.96 0.01 80);text-wrap:balance">From first conjecture to the final <span style="display:inline-block;width:0.36em;height:0.48em;background:oklch(0.96 0.01 80);vertical-align:0.02em"></span></h2>
+<p style="margin:22px 0 0;max-width:620px;font-size:17px;line-height:1.6;color:oklch(0.74 0.008 276);text-wrap:pretty">Theoremis holds the whole arc of mathematical work in one place: the exploration, the argument, and the scrutiny it has to survive.</p>
+<div style="margin-top:44px;border-bottom:1px solid oklch(0.21 0.006 276)">
+<div style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px 20px;align-items:baseline;padding:22px 0;border-top:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--serif);font-style:italic;font-size:17px;color:oklch(0.66 0.008 276)">(i)</span><div><div style="font-size:17.5px;font-weight:500;color:oklch(0.95 0.005 276)">Explore conjectures</div><div style="margin-top:5px;font-size:15.5px;line-height:1.55;color:oklch(0.70 0.008 276);text-wrap:pretty">State a conjecture, test it numerically, and study the structures behind it before committing to a proof.</div></div><span style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.17 0.006 276);font-size:12.5px;color:oklch(0.84 0.006 276)">Explore</span></div>
+<div style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px 20px;align-items:baseline;padding:22px 0;border-top:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--serif);font-style:italic;font-size:17px;color:oklch(0.66 0.008 276)">(ii)</span><div><div style="font-size:17.5px;font-weight:500;color:oklch(0.95 0.005 276)">Develop proofs</div><div style="margin-top:5px;font-size:15.5px;line-height:1.55;color:oklch(0.70 0.008 276);text-wrap:pretty">Write in a typeset document with numbered results, aligned equations and cross-references that stay correct as the argument grows.</div></div><span style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.17 0.006 276);font-family:var(--mono);font-size:11.5px;color:oklch(0.84 0.006 276)">TeX</span></div>
+<div style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px 20px;align-items:baseline;padding:22px 0;border-top:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--serif);font-style:italic;font-size:17px;color:oklch(0.66 0.008 276)">(iii)</span><div><div style="font-size:17.5px;font-weight:500;color:oklch(0.95 0.005 276)">Question assumptions</div><div style="margin-top:5px;font-size:15.5px;line-height:1.55;color:oklch(0.70 0.008 276);text-wrap:pretty">Ask the collaborator to challenge a step, search for counterexamples, or argue the other side.</div></div><span style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.17 0.006 276);font-size:12.5px;color:oklch(0.84 0.006 276)">Challenge</span></div>
+<div style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px 20px;align-items:baseline;padding:22px 0;border-top:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--serif);font-style:italic;font-size:17px;color:oklch(0.66 0.008 276)">(iv)</span><div><div style="font-size:17.5px;font-weight:500;color:oklch(0.95 0.005 276)">Refine reasoning</div><div style="margin-top:5px;font-size:15.5px;line-height:1.55;color:oklch(0.70 0.008 276);text-wrap:pretty">See where an argument is thin, and compare your original step with a proposed revision before deciding.</div></div><span style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.17 0.006 276);font-size:12.5px;color:oklch(0.84 0.006 276)">Find gaps</span></div>
+<div style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px 20px;align-items:baseline;padding:22px 0;border-top:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--serif);font-style:italic;font-size:17px;color:oklch(0.66 0.008 276)">(v)</span><div><div style="font-size:17.5px;font-weight:500;color:oklch(0.95 0.005 276)">Collaborate in place</div><div style="margin-top:5px;font-size:15.5px;line-height:1.55;color:oklch(0.70 0.008 276);text-wrap:pretty">Select a line, ask, review and continue. The conversation stays attached to the mathematics it concerns.</div></div><span style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:6px;border:1px solid oklch(0.29 0.008 276);background:oklch(0.17 0.006 276);font-size:12.5px;color:oklch(0.84 0.006 276)">Ask<span style="font-family:var(--mono);font-size:11px;color:oklch(0.62 0.008 276)">⌘L</span></span></div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="workspace" style="border-top:1px solid oklch(0.21 0.006 276);padding:clamp(72px,9vw,128px) clamp(20px,3vw,40px)">
+<div style="display:flex;flex-wrap:wrap;gap:24px 48px">
+<div style="flex:1 1 200px;max-width:250px;display:flex;align-items:baseline;gap:12px;padding-top:12px"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276)">§2</span><span style="font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:oklch(0.66 0.008 276)">The workspace</span></div>
+<div style="flex:3 1 560px;min-width:0">
+<h2 style="margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(32px,3.9vw,52px);line-height:1.08;letter-spacing:-0.02em;color:oklch(0.96 0.01 80);text-wrap:balance">The proof in the centre. The AI in the margins.</h2>
+<p style="margin:22px 0 0;max-width:620px;font-size:17px;line-height:1.6;color:oklch(0.74 0.008 276);text-wrap:pretty">Your mathematics is set in serif and owned by you. Everything the collaborator contributes is marked, anchored and waits for your decision.</p>
+</div>
+</div>
+<div style="margin-top:56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:1px;background:oklch(0.21 0.006 276);border:1px solid oklch(0.21 0.006 276);border-radius:14px;overflow:hidden">
+
+<div style="display:flex;flex-direction:column;gap:12px;padding:clamp(24px,3vw,36px);background:oklch(0.14 0.005 276)">
+<span style="font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:oklch(0.64 0.008 276)">FIG. 2.1</span>
+<h3 style="margin:0;font-family:var(--serif);font-weight:450;font-size:24px;line-height:1.25;letter-spacing:-0.01em;color:oklch(0.96 0.01 80)">A document that knows its own status</h3>
+<p style="margin:0;max-width:440px;font-size:15.5px;line-height:1.6;color:oklch(0.72 0.008 276);text-wrap:pretty">Every statement carries its standing: open, drafted, tested or verified. You can see at a glance what has been established and what is still a hope.</p>
+<div style="margin-top:16px;padding:22px 22px 18px 0;border-radius:10px;background:oklch(0.18 0.006 276);box-shadow:0 0 0 1px oklch(0.25 0.007 276);-webkit-mask-image:linear-gradient(to bottom,#000 72%,transparent);mask-image:linear-gradient(to bottom,#000 72%,transparent)">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr)">
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding:7px 16px 0 0"><span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;line-height:1;letter-spacing:0.08em;color:oklch(0.74 0.008 276)"><span style="width:6px;height:6px;box-sizing:border-box;border-radius:50%;border:1.25px solid currentColor"></span>OPEN</span><span style="font-size:10.5px;color:oklch(0.64 0.008 276);white-space:nowrap">tested to <span data-tex="10^4"></span></span></div>
+<p style="margin:0;font-family:var(--serif);font-size:14.5px;line-height:1.62;color:oklch(0.93 0.012 80)"><span style="font-weight:650">Conjecture 1.</span> <em>For every integer <span style="white-space:nowrap"><span data-tex="n\ge 1"></span>,</span> the sum of the first <span data-tex="n"></span> odd positive integers is <span style="white-space:nowrap"><span data-tex="n^2"></span>:</span></em></p>
+<div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;padding:8px 0 2px;font-size:15px;color:oklch(0.93 0.012 80)"><span></span><span data-tex="\displaystyle\sum_{k=1}^{n}(2k-1)=n^2"></span><span style="justify-self:end;font-family:var(--serif);font-size:13.5px;color:oklch(0.72 0.01 80)">(1)</span></div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding:21px 16px 0 0"><span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;line-height:1;letter-spacing:0.08em;color:oklch(0.74 0.008 276)"><span style="width:6px;height:6px;box-sizing:border-box;border-radius:50%;border:1.25px solid currentColor;background:linear-gradient(90deg,currentColor 50%,transparent 50%)"></span>DRAFT</span><span style="font-size:10.5px;color:oklch(0.64 0.008 276);white-space:nowrap">not formalized</span></div>
+<p style="margin:14px 0 0;font-family:var(--serif);font-size:14.5px;line-height:1.62;color:oklch(0.93 0.012 80)"><em>Proof.</em> By induction on <span style="white-space:nowrap"><span data-tex="n"></span>.</span> The case <span data-tex="n=1"></span> reads <span style="white-space:nowrap"><span data-tex="1=1^2"></span>.</span> Suppose (1) holds for some <span style="white-space:nowrap"><span data-tex="n\ge 1"></span>.</span></p>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:12px;padding:clamp(24px,3vw,36px);background:oklch(0.14 0.005 276)">
+<span style="font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:oklch(0.64 0.008 276)">FIG. 2.2</span>
+<h3 style="margin:0;font-family:var(--serif);font-weight:450;font-size:24px;line-height:1.25;letter-spacing:-0.01em;color:oklch(0.96 0.01 80)">A collaborator that reads the argument</h3>
+<p style="margin:0;max-width:440px;font-size:15.5px;line-height:1.6;color:oklch(0.72 0.008 276);text-wrap:pretty">Select any step and ask. Findings come back pinned to the exact line they concern, with a severity and a short explanation.</p>
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:10px;background:oklch(0.18 0.006 276);box-shadow:0 0 0 1px oklch(0.25 0.007 276)">
+<div style="position:relative;padding:10px 12px;border-radius:6px;background:oklch(0.62 0.13 276 / 0.15);box-shadow:inset 0 0 0 1px oklch(0.70 0.11 276 / 0.18)">
+<span style="position:absolute;left:-1px;top:-1px;width:9px;height:9px;border-left:1.5px solid oklch(0.76 0.10 276);border-top:1.5px solid oklch(0.76 0.10 276);border-top-left-radius:6px"></span>
+<span style="position:absolute;left:-1px;bottom:-1px;width:9px;height:9px;border-left:1.5px solid oklch(0.76 0.10 276);border-bottom:1.5px solid oklch(0.76 0.10 276);border-bottom-left-radius:6px"></span>
+<span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-right:1.5px solid oklch(0.76 0.10 276);border-bottom:1.5px solid oklch(0.76 0.10 276);border-bottom-right-radius:6px"></span>
+<span style="position:absolute;right:-9px;top:-9px;width:18px;height:18px;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.035 75);border:1px solid oklch(0.72 0.10 75 / 0.85);color:oklch(0.90 0.07 75);font-family:var(--mono);font-size:10.5px;font-weight:500;line-height:1">1</span>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:baseline;font-size:15px;color:oklch(0.93 0.012 80)"><span></span><span data-tex="\displaystyle\sum_{k=1}^{n+1}(2k-1)=n^2+2n+1"></span><span style="justify-self:end;font-family:var(--serif);font-size:13.5px;color:oklch(0.72 0.01 80)">(2)</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:8px;background:oklch(0.168 0.006 276);box-shadow:0 0 0 1px oklch(0.26 0.008 276),0 16px 32px -20px oklch(0 0 0 / 0.8)">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:17px;height:17px;flex:none;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.035 75);border:1px solid oklch(0.72 0.10 75 / 0.85);color:oklch(0.90 0.07 75);font-family:var(--mono);font-size:10px;font-weight:500;line-height:1">1</span><span style="flex:1;font-size:13px;font-weight:600;color:oklch(0.93 0.02 276)">Implicit step in (2)</span><span style="font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.80 0.07 75)">MINOR</span></div>
+<div style="font-size:13px;line-height:1.55;color:oklch(0.87 0.035 276)">Splits off the term <span data-tex="k=n+1"></span> and applies the hypothesis in one step. Both moves are valid; the use of (1) is not shown.</div>
+<div style="display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.76 0.05 276)"><span style="width:7px;height:7px;box-sizing:border-box;border:1.25px solid oklch(0.70 0.10 276)"></span>COLLABORATOR · NOT VERIFIED</div>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:12px;padding:clamp(24px,3vw,36px);background:oklch(0.14 0.005 276)">
+<span style="font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:oklch(0.64 0.008 276)">FIG. 2.3</span>
+<h3 style="margin:0;font-family:var(--serif);font-weight:450;font-size:24px;line-height:1.25;letter-spacing:-0.01em;color:oklch(0.96 0.01 80)">Revisions you review before they land</h3>
+<p style="margin:0;max-width:440px;font-size:15.5px;line-height:1.6;color:oklch(0.72 0.008 276);text-wrap:pretty">Proposed changes sit beside your original reasoning. Accept, edit or reject. Nothing enters the proof without your decision.</p>
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:12px;padding:22px;border-radius:10px;background:oklch(0.18 0.006 276);box-shadow:0 0 0 1px oklch(0.25 0.007 276)">
+<div style="border-radius:8px;border:1px solid oklch(0.27 0.008 276);overflow:hidden;font-size:13px">
+<div style="display:grid;grid-template-columns:76px minmax(0,1fr);align-items:center;min-height:42px;padding:4px 14px;background:oklch(0.168 0.006 276);border-bottom:1px solid oklch(0.27 0.008 276)"><span style="font-family:var(--mono);font-size:10px;letter-spacing:0.07em;color:oklch(0.66 0.008 276)">ORIGINAL</span><span style="color:oklch(0.84 0.01 80)" data-tex="\textstyle\sum_{k=1}^{n+1}(2k-1)=n^2+2n+1"></span></div>
+<div style="display:grid;grid-template-columns:76px minmax(0,1fr);row-gap:6px;align-items:baseline;padding:11px 14px;background:oklch(0.70 0.10 276 / 0.07)"><span style="font-family:var(--mono);font-size:10px;letter-spacing:0.07em;color:oklch(0.80 0.06 276)">PROPOSED</span><span style="color:oklch(0.88 0.035 276)" data-tex="\textstyle\sum_{k=1}^{n+1}(2k-1)=\htmlStyle{background:rgba(132,144,228,0.22);box-shadow:0 0 0 2px rgba(132,144,228,0.22);border-radius:2px;}{\textstyle\sum_{k=1}^{n}(2k-1)+(2n+1)}"></span><span></span><span style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:oklch(0.88 0.035 276)"><span data-tex="\textstyle\phantom{\sum_{k=1}^{n+1}(2k-1)}=n^2+(2n+1)"></span><span style="font-size:11px;line-height:1;padding:3px 6px;border-radius:4px;background:rgba(132,144,228,0.22);color:oklch(0.90 0.035 276)">by (1)</span></span></div>
+</div>
+<div style="display:flex;align-items:center;gap:2px">
+<span style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;border:1px solid oklch(0.46 0.02 276);border-radius:7px;background:oklch(0.30 0.014 276);color:oklch(0.97 0.005 276);font-size:12.5px;font-weight:500">Accept<span style="font-family:var(--mono);font-size:10.5px;font-weight:400;color:oklch(0.74 0.01 276)">⌘↵</span></span>
+<span style="height:28px;display:flex;align-items:center;padding:0 10px;color:oklch(0.80 0.008 276);font-size:12.5px">Edit</span>
+<span style="height:28px;display:flex;align-items:center;padding:0 10px;color:oklch(0.80 0.008 276);font-size:12.5px">Reject</span>
+<span style="flex:1"></span>
+<span style="height:28px;display:flex;align-items:center;padding:0 10px;border-radius:7px;background:oklch(0.235 0.008 276);box-shadow:inset 0 0 0 1px oklch(0.30 0.009 276);color:oklch(0.92 0.005 276);font-size:12.5px">Compare</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:12px;padding:clamp(24px,3vw,36px);background:oklch(0.14 0.005 276)">
+<span style="font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:oklch(0.64 0.008 276)">FIG. 2.4</span>
+<h3 style="margin:0;font-family:var(--serif);font-weight:450;font-size:24px;line-height:1.25;letter-spacing:-0.01em;color:oklch(0.96 0.01 80)">Rigor you can read</h3>
+<p style="margin:0;max-width:440px;font-size:15.5px;line-height:1.6;color:oklch(0.72 0.008 276);text-wrap:pretty">AI output is always marked unverified. Numerical evidence is labelled as evidence. Only a proof checked in Lean earns a filled <span style="display:inline-block;width:0.5em;height:0.64em;background:oklch(0.92 0.01 80);vertical-align:-0.04em"></span></p>
+<div style="margin-top:16px;padding:8px 22px;border-radius:10px;background:oklch(0.18 0.006 276);box-shadow:0 0 0 1px oklch(0.25 0.007 276)">
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid oklch(0.235 0.007 276)"><span style="width:9px;height:9px;box-sizing:border-box;border-radius:50%;border:1.5px solid oklch(0.80 0.008 276)"></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.86 0.006 276)">OPEN</span><span style="font-size:13.5px;color:oklch(0.70 0.008 276)">Stated, not yet proved</span></div>
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid oklch(0.235 0.007 276)"><span style="width:9px;height:9px;box-sizing:border-box;border-radius:50%;border:1.5px solid oklch(0.80 0.008 276);display:grid;place-items:center"><span style="width:3px;height:3px;border-radius:50%;background:oklch(0.80 0.008 276)"></span></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.86 0.006 276)">TESTED</span><span style="font-size:13.5px;color:oklch(0.70 0.008 276)">Numerical evidence, not a proof</span></div>
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid oklch(0.235 0.007 276)"><span style="width:9px;height:9px;box-sizing:border-box;border:1.5px solid oklch(0.72 0.10 276)"></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.84 0.06 276)">SUGGESTED</span><span style="font-size:13.5px;color:oklch(0.76 0.04 276)">From the collaborator, not verified</span></div>
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid oklch(0.235 0.007 276)"><span style="width:9px;height:9px;box-sizing:border-box;border-radius:50%;border:1.5px solid oklch(0.80 0.008 276);background:linear-gradient(90deg,oklch(0.80 0.008 276) 50%,transparent 50%)"></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.86 0.006 276)">DRAFT</span><span style="font-size:13.5px;color:oklch(0.70 0.008 276)">Proof in progress</span></div>
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid oklch(0.235 0.007 276)"><span style="width:9px;height:9px;border-radius:50%;background:oklch(0.80 0.008 276)"></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.86 0.006 276)">PROVED</span><span style="font-size:13.5px;color:oklch(0.70 0.008 276)">Checked by hand</span></div>
+<div style="display:grid;grid-template-columns:22px 112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 0"><span style="width:8px;height:10px;margin-left:0.5px;background:oklch(0.94 0.01 80)"></span><span style="font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.96 0.01 80)">VERIFIED</span><span style="font-size:13.5px;color:oklch(0.86 0.01 80)">Checked in Lean</span></div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section id="chatgpt" style="border-top:1px solid oklch(0.21 0.006 276);padding:clamp(72px,9vw,128px) clamp(20px,3vw,40px)">
+<div style="display:flex;flex-wrap:wrap;gap:24px 48px">
+<div style="flex:1 1 200px;max-width:250px;display:flex;align-items:baseline;gap:12px;padding-top:12px"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276)">§3</span><span style="font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:oklch(0.66 0.008 276)">Integration</span></div>
+<div style="flex:3 1 560px;min-width:0">
+<h2 style="margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(32px,3.9vw,52px);line-height:1.08;letter-spacing:-0.02em;color:oklch(0.96 0.01 80);text-wrap:balance;display:flex;align-items:center;gap:0.32em"><img src="/assets/logos/openai.svg" alt="" style="width:44px;height:44px;flex:none;display:block;width:0.82em;height:0.82em"><span>Works with ChatGPT.</span></h2>
+<p style="margin:22px 0 0;max-width:640px;font-size:17px;line-height:1.6;color:oklch(0.74 0.008 276);text-wrap:pretty">Connect your ChatGPT account and the collaborator runs on it, inside your workspace. Theoremis is a dedicated mathematical environment, not ChatGPT itself: ChatGPT provides the model, and Theoremis provides the document, the structure and the review around it.</p>
+</div>
+</div>
+<div style="margin-top:56px;display:flex;flex-wrap:wrap;gap:20px">
+<div style="flex:1 1 300px;display:flex;flex-direction:column;border-top:1px solid oklch(0.21 0.006 276)">
+<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 12px;padding:22px 0;border-bottom:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276);padding-top:3px">01</span><div><div style="font-size:17px;font-weight:500;color:oklch(0.95 0.005 276)">Connect</div><div style="margin-top:4px;font-size:15px;line-height:1.55;color:oklch(0.70 0.008 276)">Link your ChatGPT account once, in Settings.</div></div></div>
+<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 12px;padding:22px 0;border-bottom:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276);padding-top:3px">02</span><div><div style="font-size:17px;font-weight:500;color:oklch(0.95 0.005 276)">Choose the context</div><div style="margin-top:4px;font-size:15px;line-height:1.55;color:oklch(0.70 0.008 276)">Select a step, a lemma or a section. You see exactly what is shared before you ask.</div></div></div>
+<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 12px;padding:22px 0;border-bottom:1px solid oklch(0.21 0.006 276)"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276);padding-top:3px">03</span><div><div style="font-size:17px;font-weight:500;color:oklch(0.95 0.005 276)">Review what returns</div><div style="margin-top:4px;font-size:15px;line-height:1.55;color:oklch(0.70 0.008 276)">Findings arrive as marked suggestions in your document, never as silent edits.</div></div></div>
+</div>
+<div style="flex:1.5 1 520px;min-width:0;border-radius:14px;background:oklch(0.16 0.006 276);box-shadow:0 0 0 1px oklch(0.24 0.007 276),inset 0 1px 0 oklch(1 0 0 / 0.04);overflow-x:auto">
+<div style="min-width:560px;padding:32px 28px 26px;box-sizing:border-box">
+<div style="display:flex;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:10px;background:oklch(0.185 0.006 276);box-shadow:0 0 0 1px oklch(0.27 0.008 276)">
+<span style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.64 0.008 276)">ON YOUR MACHINE</span>
+<span style="font-family:var(--serif);font-size:17px;color:oklch(0.95 0.01 80)">Your document</span>
+<span style="font-size:12.5px;line-height:1.45;color:oklch(0.70 0.008 276)">Sums of odd integers</span>
+</div>
+<div style="position:relative;flex:0 0 44px;align-self:center;height:1px;background:oklch(0.34 0.01 276)"><span class="travel-dot" aria-hidden="true"></span></div>
+<div style="flex:1.25;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:10px;background:oklch(0.20 0.007 276);box-shadow:0 0 0 1px oklch(0.34 0.012 276),0 18px 40px -24px oklch(0.52 0.12 276 / 0.45)">
+<span style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.80 0.06 276)">THEOREMIS</span>
+<span style="font-family:var(--serif);font-size:17px;color:oklch(0.95 0.01 80)">Context and review</span>
+<span style="font-size:12.5px;line-height:1.45;color:oklch(0.70 0.008 276)">Proof (2)–(3), uses (1)</span>
+</div>
+<div style="position:relative;flex:0 0 44px;align-self:center;height:1px;background:oklch(0.34 0.01 276)"><span class="travel-dot travel-dot--late" aria-hidden="true"></span></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:10px;background:oklch(0.185 0.006 276);box-shadow:0 0 0 1px oklch(0.27 0.008 276)">
+<span style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.64 0.008 276)"><span style="width:5px;height:5px;border-radius:50%;background:oklch(0.86 0.01 80)"></span>CONNECTED</span>
+<span style="display:flex;align-items:center;gap:8px;font-family:var(--sans);font-size:17px;font-weight:500;color:oklch(0.95 0.005 276)"><img src="/assets/logos/openai.svg" alt="" style="width:18px;height:18px;flex:none;display:block">ChatGPT</span>
+<span style="font-size:12.5px;line-height:1.45;color:oklch(0.70 0.008 276)">Your account · GPT-6.1 Sol</span>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+<div style="padding:14px 16px;border-radius:9px;border:1px solid oklch(0.25 0.007 276)">
+<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.64 0.008 276)">SENT</div>
+<div style="margin-top:8px;font-size:13px;line-height:1.5;color:oklch(0.84 0.006 276)">Your selection, the results it cites, and your question.</div>
+<div style="margin-top:10px;display:flex;justify-content:flex-start;font-size:12px;color:oklch(0.93 0.012 80)"><span data-tex="\textstyle\sum_{k=1}^{n+1}(2k-1)=n^2+2n+1"></span></div>
+</div>
+<div style="padding:14px 16px;border-radius:9px;border:1px dashed oklch(0.70 0.10 276 / 0.45);background:oklch(0.70 0.10 276 / 0.04)">
+<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;color:oklch(0.80 0.06 276)">RETURNED</div>
+<div style="margin-top:8px;font-size:13px;line-height:1.5;color:oklch(0.87 0.035 276)">One finding and one proposed revision, marked as model reasoning.</div>
+<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span style="width:17px;height:17px;box-sizing:border-box;display:grid;place-items:center;border-radius:5px;background:oklch(0.27 0.035 75);border:1px solid oklch(0.72 0.10 75 / 0.85);color:oklch(0.90 0.07 75);font-family:var(--mono);font-size:10px;font-weight:500;line-height:1">1</span><span style="font-family:var(--mono);font-size:9.5px;letter-spacing:0.07em;color:oklch(0.80 0.06 276);border:1px dashed oklch(0.70 0.10 276 / 0.55);border-radius:4px;padding:2px 6px">NOT VERIFIED</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="providers" style="border-top:1px solid oklch(0.21 0.006 276);padding:clamp(72px,9vw,128px) clamp(20px,3vw,40px)">
+<div style="display:flex;flex-wrap:wrap;gap:24px 48px">
+<div style="flex:1 1 200px;max-width:250px;display:flex;align-items:baseline;gap:12px;padding-top:12px"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276)">§4</span><span style="font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:oklch(0.66 0.008 276)">Providers</span></div>
+<div style="flex:3 1 560px;min-width:0">
+<h2 style="margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(32px,3.9vw,52px);line-height:1.08;letter-spacing:-0.02em;color:oklch(0.96 0.01 80);text-wrap:balance">One workspace. Your choice of model.</h2>
+<p style="margin:22px 0 0;max-width:620px;font-size:17px;line-height:1.6;color:oklch(0.74 0.008 276);text-wrap:pretty">ChatGPT is available today. Poe and OpenRouter are in development, so you will be able to choose the model behind your collaborator.</p>
+</div>
+</div>
+<div style="margin-top:56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px">
+<div style="display:flex;flex-direction:column;gap:14px;min-height:240px;padding:28px;box-sizing:border-box;border-radius:14px;background:oklch(0.165 0.006 276);box-shadow:0 0 0 1px oklch(0.27 0.008 276),inset 0 1px 0 oklch(1 0 0 / 0.05)">
+<span style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.90 0.01 80)"><span style="width:7px;height:9px;background:oklch(0.92 0.01 80)"></span>AVAILABLE NOW</span>
+<span style="display:flex;align-items:center;gap:0.36em;font-family:var(--serif);font-size:clamp(26px,2.5vw,34px);line-height:1.1;letter-spacing:-0.015em;color:oklch(0.97 0.01 80);white-space:nowrap"><img src="/assets/logos/openai.svg" alt="" style="width:0.82em;height:0.82em;flex:none;display:block">ChatGPT</span>
+<span style="font-size:15px;line-height:1.55;color:oklch(0.72 0.008 276)">Connect your account and start reviewing proofs today.</span>
+<span style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(0.70 0.008 276)"><span style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.07em;color:oklch(0.62 0.008 276)">MODEL</span>GPT-6.1 Sol</span>
+<span style="flex:1"></span>
+<span class="h6" data-go="chatgpt" role="link" tabindex="0" style="font-size:14px;color:oklch(0.86 0.06 276);cursor:pointer">How it connects →</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px;min-height:240px;padding:28px;box-sizing:border-box;border-radius:14px;border:1px dashed oklch(0.70 0.10 276 / 0.45);background:oklch(0.70 0.10 276 / 0.035)">
+<span style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.82 0.06 276)"><span style="width:8px;height:8px;box-sizing:border-box;border:1.5px solid oklch(0.72 0.10 276)"></span>COMING SOON</span>
+<span style="display:flex;align-items:center;gap:0.36em;font-family:var(--serif);font-size:clamp(26px,2.5vw,34px);line-height:1.1;letter-spacing:-0.015em;color:oklch(0.97 0.01 80);white-space:nowrap"><img src="/assets/logos/poe.svg" alt="" style="width:0.82em;height:0.82em;flex:none;display:block;opacity:0.9">Poe</span>
+<span style="font-size:15px;line-height:1.55;color:oklch(0.72 0.008 276)">Use the models available through your Poe account.</span>
+<span style="flex:1"></span>
+<span class="h6" data-go="start" role="link" tabindex="0" style="font-size:14px;color:oklch(0.86 0.06 276);cursor:pointer">Notify me →</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px;min-height:240px;padding:28px;box-sizing:border-box;border-radius:14px;border:1px dashed oklch(0.70 0.10 276 / 0.45);background:oklch(0.70 0.10 276 / 0.035)">
+<span style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:oklch(0.82 0.06 276)"><span style="width:8px;height:8px;box-sizing:border-box;border:1.5px solid oklch(0.72 0.10 276)"></span>COMING SOON</span>
+<span style="display:flex;align-items:center;gap:0.36em;font-family:var(--serif);font-size:clamp(26px,2.5vw,34px);line-height:1.1;letter-spacing:-0.015em;color:oklch(0.97 0.01 80);white-space:nowrap"><img src="/assets/logos/openrouter.svg" alt="" style="width:0.82em;height:0.82em;flex:none;display:block;opacity:0.9">OpenRouter</span>
+<span style="font-size:15px;line-height:1.55;color:oklch(0.72 0.008 276)">Route the collaborator through the provider and model you choose.</span>
+<span style="flex:1"></span>
+<span class="h6" data-go="start" role="link" tabindex="0" style="font-size:14px;color:oklch(0.86 0.06 276);cursor:pointer">Notify me →</span>
+</div>
+</div>
+<p style="margin:20px 0 0;font-family:var(--serif);font-size:14px;font-style:italic;color:oklch(0.64 0.008 276)">Dashed, as in Theoremis itself: proposed, not yet established.</p>
+</section>
+
+<section id="principles" style="border-top:1px solid oklch(0.21 0.006 276);padding:clamp(72px,9vw,128px) clamp(20px,3vw,40px)">
+<div style="display:flex;flex-wrap:wrap;gap:24px 48px">
+<div style="flex:1 1 200px;max-width:250px;display:flex;align-items:baseline;gap:12px;padding-top:14px"><span style="font-family:var(--mono);font-size:12px;color:oklch(0.80 0.06 276)">§5</span><span style="font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:oklch(0.66 0.008 276)">Principles</span></div>
+<div style="flex:3 1 560px;min-width:0">
+<p style="margin:0;max-width:16em;font-family:var(--serif);font-weight:400;font-size:clamp(30px,3.6vw,48px);line-height:1.14;letter-spacing:-0.018em;color:oklch(0.96 0.01 80);text-wrap:balance">Mathematicians should not be replaced by AI. <span style="color:oklch(0.70 0.008 276)">They should be empowered by better tools.</span></p>
+</div>
+</div>
+<div style="margin-top:64px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:0 40px">
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 1</span> (Open). <em>Theoremis is free to use, and its source is public. Read it, audit it, extend it.</em></div>
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 2</span> (Local). <em>Your documents live on your machine, in files you own.</em></div>
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 3</span> (For mathematicians). <em>Typeset documents, numbered results and a review process designed around proofs.</em></div>
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 4</span> (Your model). <em>Bring your own AI. Connect the account you already use, starting with ChatGPT.</em></div>
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 5</span> (Agency). <em>The collaborator proposes; the mathematician decides. Nothing enters a proof without consent.</em></div>
+<div style="padding:26px 0;border-top:1px solid oklch(0.21 0.006 276);font-family:var(--serif);font-size:17px;line-height:1.6;color:oklch(0.88 0.01 80)"><span style="font-weight:650;color:oklch(0.96 0.01 80)">Axiom 6</span> (Rigor). <em>Model reasoning stays marked unverified until something stronger checks it.</em></div>
+</div>
+<div style="margin-top:40px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;border-radius:12px;background:oklch(0.16 0.006 276);box-shadow:0 0 0 1px oklch(0.24 0.007 276)">
+<div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:16px;font-weight:500;color:oklch(0.95 0.005 276)">Built in the open</span><span style="font-size:14.5px;color:oklch(0.70 0.008 276)">Read the source, file an issue, or propose a change.</span></div>
+<a class="h7" href="https://github.com/adamouks/theoremis" target="_blank" rel="noopener" style="height:40px;display:flex;align-items:center;gap:8px;padding:0 16px;border-radius:8px;border:1px solid oklch(0.30 0.008 276);background:oklch(0.18 0.006 276);font-size:14px;color:oklch(0.92 0.005 276)">View on GitHub<span style="font-size:12.5px;color:oklch(0.62 0.008 276)">↗</span></a>
+</div>
+</section>
+
+<section id="start" style="position:relative;overflow:hidden;border-top:1px solid oklch(0.21 0.006 276);padding:clamp(88px,11vw,152px) clamp(20px,3vw,40px)">
+
+<div style="position:absolute;inset:0;background-image:linear-gradient(to right,oklch(1 0 0 / 0.035) 1px,transparent 1px),linear-gradient(to bottom,oklch(1 0 0 / 0.035) 1px,transparent 1px);background-size:64px 64px;background-position:-1px -1px;-webkit-mask-image:radial-gradient(ellipse 60% 70% at 50% 100%,#000 10%,transparent 70%);mask-image:radial-gradient(ellipse 60% 70% at 50% 100%,#000 10%,transparent 70%);pointer-events:none"></div>
+
+<div style="position:relative;display:flex;flex-direction:column;align-items:center;text-align:center">
+<h2 style="margin:0;max-width:13em;font-family:var(--serif);font-weight:400;font-size:clamp(38px,5.4vw,76px);line-height:1.04;letter-spacing:-0.025em;color:oklch(0.97 0.01 80);text-wrap:balance">A better environment for mathematical thought.</h2>
+<p style="margin:24px 0 0;font-size:18px;color:oklch(0.74 0.008 276)">Free and open source. Works with ChatGPT today.</p>
+<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:36px">
+<a class="h3" href="https://github.com/adamouks/theoremis/releases" target="_blank" rel="noopener" style="height:48px;display:flex;align-items:center;gap:10px;padding:0 22px;border-radius:9px;background:oklch(0.95 0.01 80);box-shadow:0 1px 0 oklch(1 0 0 / 0.5) inset,0 8px 24px -12px oklch(0.95 0.01 80 / 0.35);font-size:15px;font-weight:500;color:oklch(0.15 0.006 276)">Download Theoremis<svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" style="stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 2v7.5M2.75 6.5 6 9.75 9.25 6.5"></path></svg></a>
+<a class="h7" href="https://github.com/adamouks/theoremis" target="_blank" rel="noopener" style="height:48px;display:flex;align-items:center;gap:8px;padding:0 20px;border-radius:9px;border:1px solid oklch(0.30 0.008 276);background:oklch(0.16 0.006 276);font-size:15px;color:oklch(0.92 0.005 276)">View on GitHub<span style="font-size:13px;color:oklch(0.62 0.008 276)">↗</span></a>
+</div>
+<div class="dc-if" data-if="notSent">
+<form id="updates-form" style="margin:44px 0 0;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;width:100%;max-width:440px">
+<input class="f8" type="email" name="email" required autocomplete="email" aria-label="Email address" placeholder="you@university.edu" style="flex:1 1 220px;height:42px;padding:0 14px;box-sizing:border-box;border-radius:8px;border:1px solid oklch(0.28 0.008 276);background:oklch(0.16 0.006 276);color:oklch(0.95 0.005 276);font-family:var(--sans);font-size:14.5px;outline:none">
+<button class="h9" type="submit" style="height:42px;padding:0 16px;border-radius:8px;border:1px solid oklch(0.32 0.009 276);background:oklch(0.20 0.007 276);color:oklch(0.94 0.005 276);font-family:var(--sans);font-size:14.5px;cursor:pointer">Get updates</button>
+</form>
+<p style="margin:12px 0 0;font-size:13px;color:oklch(0.62 0.008 276)">Release notes and integration news, a few times a year.</p>
+</div>
+<div class="dc-if" data-if="sent" hidden>
+<p style="margin:44px 0 0;display:flex;align-items:center;gap:10px;font-size:14.5px;color:oklch(0.86 0.006 276)"><span style="width:7px;height:9px;background:oklch(0.92 0.01 80)"></span>Thank you. We will write when there is news.</p>
+</div>
+</div>
+<span title="∎" style="position:absolute;right:clamp(20px,3vw,40px);bottom:32px;width:14px;height:18px;background:oklch(0.93 0.01 80)"></span>
+</section>
+
+<footer style="border-top:1px solid oklch(0.21 0.006 276);padding:32px clamp(20px,3vw,40px) 40px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px;font-size:13.5px;color:oklch(0.66 0.008 276)">
+<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap"><span style="display:flex;align-items:baseline"><span style="font-family:var(--serif);font-size:17px;font-weight:500;color:oklch(0.94 0.01 80)">Theoremis</span><span style="width:5px;height:7px;margin-left:3px;background:oklch(0.94 0.01 80)"></span></span><span>A free, open-source environment for mathematical thought.</span></div>
+<div style="display:flex;gap:20px;flex-wrap:wrap"><a class="h10" href="https://github.com/adamouks/theoremis" target="_blank" rel="noopener" style="color:oklch(0.76 0.008 276)">GitHub</a><a class="h10" href="https://github.com/adamouks/theoremis#readme" target="_blank" rel="noopener" style="color:oklch(0.76 0.008 276)">Documentation</a><a class="h10" href="https://github.com/adamouks/theoremis/releases" target="_blank" rel="noopener" style="color:oklch(0.76 0.008 276)">Changelog</a><a class="h10" href="https://github.com/adamouks/theoremis/issues" target="_blank" rel="noopener" style="color:oklch(0.76 0.008 276)">Contact</a></div>
+<span>© 2026 Theoremis contributors</span>
+</footer>
+
+</div>
+</div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
