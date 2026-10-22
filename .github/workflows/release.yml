@@ -16,7 +16,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # One draft for every build to attach to, so parallel builds can't each create their own.
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: draft
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const { version } = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+            const tag = `v${version}`;
+            const releases = await github.paginate(github.rest.repos.listReleases, context.repo);
+            const existing = releases.find((r) => r.tag_name === tag);
+            if (existing && !existing.draft) {
+              core.setFailed(`${tag} is already published. Bump the version in src-tauri/tauri.conf.json first.`);
+              return;
+            }
+            if (existing) return existing.id;
+            const { data } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: `Theoremis ${tag}`,
+              body: fs.readFileSync(".github/release-notes.md", "utf8"),
+              draft: true,
+            });
+            return data.id;
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -52,40 +84,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: Theoremis v__VERSION__
-          releaseCommitish: ${{ github.sha }}
-          releaseBody: |
-            Download the installer for your computer below, or from https://theoremis.vercel.app.
-
-            | | |
-            | --- | --- |
-            | **macOS** (Apple silicon) | `Theoremis_*_aarch64.dmg` |
-            | **macOS** (Intel) | `Theoremis_*_x64.dmg` |
-            | **Windows** | `Theoremis_*_x64-setup.exe` |
-            | **Linux** | `.AppImage`, `.deb` or `.rpm` |
-
-            These builds aren't notarized by Apple or signed for Windows yet, so the first launch needs one extra step:
-
-            - **macOS:** open the app once, then go to System Settings → Privacy & Security and choose **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/Theoremis.app`.
-            - **Windows:** if SmartScreen appears, choose **More info → Run anyway**.
-            - **Linux:** make the AppImage executable with `chmod +x Theoremis_*.AppImage`.
-
-            Then sign in with ChatGPT in Settings to use your plan, or point Theoremis at a local Ollama server.
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
-  # The release stays a draft until every installer is attached, so the download links on the
-  # site never point at a half-finished release.
+  # Published only once every installer is attached, so the site's download links never point
+  # at a half-finished release.
   publish:
-    needs: build
+    needs: [create-release, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          gh release edit "v$version" --draft=false --latest
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              ...context.repo,
+              release_id: Number("${{ needs.create-release.outputs.release_id }}"),
+              draft: false,
+              make_latest: "true",
+            });
