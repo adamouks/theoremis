@@ -2670,6 +2670,158 @@ a:hover {
   font-size: 11px;
 }
 
+.desktop-only {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.desktop-only h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--paper-strong);
+}
+
+.desktop-only p {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+
+/* Sign in with ChatGPT -------------------------------------------------------- */
+
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.account__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid oklch(0.28 0.008 276);
+  background: var(--field);
+}
+
+.account__who {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.account__who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.account__who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-4);
+}
+
+.account__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: oklch(0.84 0.01 80);
+}
+
+.account__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.account__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account__hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-4);
+}
+
+.account__waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.account__notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chatgpt-button {
+  height: 34px;
+  padding: 0 16px 0 13px;
+  border: 1px solid oklch(0.34 0 0);
+  border-radius: 999px;
+  background: oklch(0.13 0 0);
+  color: oklch(0.98 0 0);
+  font-size: 13px;
+}
+
+.chatgpt-button:hover:not(:disabled) {
+  background: oklch(0.08 0 0);
+  border-color: oklch(0.42 0 0);
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid oklch(0.4 0.01 276);
+  border-top-color: var(--text-2);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.model-menu__connect {
+  margin: 0 8px 8px 29px;
+}
+
 .palette {
   width: min(560px, 100%);
   border-radius: 12px;

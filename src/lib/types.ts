@@ -1,6 +1,6 @@
 // Settings, model and storage types mirror the serde types in src-tauri/src. Keep them in sync.
 
-export type Provider = "ollama" | "openai";
+export type Provider = "ollama" | "chatgpt";
 export type Role = "system" | "user" | "assistant";
 
 export interface ModelRef {
@@ -11,6 +11,8 @@ export interface ModelRef {
 export interface ModelInfo {
   provider: Provider;
   id: string;
+  /** A friendlier display name, when the provider has one. */
+  name: string | null;
   detail: string | null;
 }
 
@@ -21,17 +23,9 @@ export interface ProviderStatus {
   message: string | null;
 }
 
-export interface KeyStatus {
-  source: "settings" | "env" | "none";
-  hint: string | null;
-}
-
 export interface Settings {
   ollamaBaseUrl: string;
-  openaiBaseUrl: string;
   defaultOllamaBaseUrl: string;
-  defaultOpenaiBaseUrl: string;
-  openaiKey: KeyStatus;
   systemPrompt: string;
   displayName: string;
   lastModel: ModelRef | null;
@@ -39,9 +33,6 @@ export interface Settings {
 
 export interface SettingsUpdate {
   ollamaBaseUrl?: string;
-  openaiBaseUrl?: string;
-  /** An empty string removes the stored key. */
-  openaiApiKey?: string;
   systemPrompt?: string;
   displayName?: string;
   lastModel?: ModelRef;
@@ -56,8 +47,22 @@ export type StreamEvent = { type: "delta"; text: string } | { type: "reasoning";
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
   ollama: "Ollama",
-  openai: "ChatGPT",
+  chatgpt: "ChatGPT",
 };
+
+/** Where people check how much of their ChatGPT plan they've used. */
+export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
+
+/** The Sign in with ChatGPT connection. Credentials never reach the interface. */
+export interface ChatGptSession {
+  status: "signedOut" | "signingIn" | "connected" | "expired";
+  name: string | null;
+  email: string | null;
+  /** Whether the account allowed Theoremis to use its ChatGPT plan. */
+  sharing: boolean;
+  /** Something to tell the person, e.g. that a sign-out wasn't confirmed by ChatGPT. */
+  notice: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Workspace

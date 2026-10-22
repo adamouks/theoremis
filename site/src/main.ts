@@ -8,8 +8,7 @@ import "katex/dist/katex.min.css";
 import katex from "katex";
 import "./site.css";
 import "./hover.css";
-
-const RELEASES = "https://github.com/adamouks/theoremis/releases";
+import { RELEASES, setUpDownloads } from "./download";
 /** Set VITE_UPDATES_ENDPOINT to a form backend (Buttondown, Formspree, …) to collect emails. */
 const UPDATES_ENDPOINT = (import.meta.env.VITE_UPDATES_ENDPOINT as string | undefined) ?? "";
 
@@ -273,3 +272,7 @@ if (form) {
 }
 
 render();
+
+// --- Downloads -------------------------------------------------------------------
+
+void setUpDownloads();

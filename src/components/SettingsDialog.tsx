@@ -1,27 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "../lib/api";
-import type { Settings, SettingsUpdate } from "../lib/types";
+import type { ChatGptSession, Settings, SettingsUpdate } from "../lib/types";
+import { ChatGptAccount } from "./ChatGptAccount";
 import { Close, OllamaMark, OpenAILogo } from "./Icons";
 
 interface Props {
   settings: Settings;
+  chatgpt: ChatGptSession | null;
+  onChatgptChange: (session: ChatGptSession) => void;
   onClose: () => void;
   onSaved: (settings: Settings) => void;
 }
 
-function keyDescription(settings: Settings): string {
-  const { source, hint } = settings.openaiKey;
-  if (source === "settings") return `Using the key saved in Theoremis (${hint}).`;
-  if (source === "env") return `Using OPENAI_API_KEY from your environment (${hint}).`;
-  return "No key yet. It is stored only on this computer and never shown to the interface.";
-}
-
-export function SettingsDialog({ settings, onClose, onSaved }: Props) {
+export function SettingsDialog({ settings, chatgpt, onChatgptChange, onClose, onSaved }: Props) {
   const [displayName, setDisplayName] = useState(settings.displayName);
-  const [apiKey, setApiKey] = useState("");
-  const [removeKey, setRemoveKey] = useState(false);
-  const [openaiBaseUrl, setOpenaiBaseUrl] = useState(settings.openaiBaseUrl);
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl);
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
   const [saving, setSaving] = useState(false);
@@ -37,9 +30,6 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
     event.preventDefault();
     const update: SettingsUpdate = {};
     if (displayName !== settings.displayName) update.displayName = displayName;
-    if (apiKey.trim()) update.openaiApiKey = apiKey.trim();
-    else if (removeKey) update.openaiApiKey = "";
-    if (openaiBaseUrl !== settings.openaiBaseUrl) update.openaiBaseUrl = openaiBaseUrl;
     if (ollamaBaseUrl !== settings.ollamaBaseUrl) update.ollamaBaseUrl = ollamaBaseUrl;
     if (systemPrompt !== settings.systemPrompt) update.systemPrompt = systemPrompt;
 
@@ -81,47 +71,9 @@ export function SettingsDialog({ settings, onClose, onSaved }: Props) {
             <h3>
               <OpenAILogo size={14} />
               ChatGPT
-              <span className="settings-section__tag">OpenAI API</span>
+              <span className="settings-section__tag">Your plan</span>
             </h3>
-            <label className="field">
-              <span>API key</span>
-              <input
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={settings.openaiKey.hint ?? "sk-…"}
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setRemoveKey(false);
-                }}
-              />
-              <small>
-                {removeKey ? "The saved key will be removed." : keyDescription(settings)}{" "}
-                <button type="button" className="link-button" onClick={() => void openUrl("https://platform.openai.com/api-keys")}>
-                  Get an API key
-                </button>
-                {settings.openaiKey.source === "settings" && !removeKey && (
-                  <>
-                    {" · "}
-                    <button type="button" className="link-button" onClick={() => setRemoveKey(true)}>
-                      Remove saved key
-                    </button>
-                  </>
-                )}
-              </small>
-            </label>
-            <label className="field">
-              <span>API base URL</span>
-              <input
-                type="url"
-                spellCheck={false}
-                placeholder={settings.defaultOpenaiBaseUrl}
-                value={openaiBaseUrl}
-                onChange={(e) => setOpenaiBaseUrl(e.target.value)}
-              />
-              <small>Leave blank for OpenAI. Any OpenAI-compatible endpoint works here.</small>
-            </label>
+            <ChatGptAccount session={chatgpt} onChange={onChatgptChange} />
           </section>
 
           <section className="settings-section">

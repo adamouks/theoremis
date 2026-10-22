@@ -7,6 +7,9 @@ use serde::{Serialize, Serializer};
 pub enum AppError {
     #[error("{0}")]
     Message(String),
+    /// An error from ChatGPT's sign-in or API, with its machine-readable code.
+    #[error("{message}")]
+    Auth { code: String, message: String },
     #[error("Network error: {0}")]
     Http(#[from] reqwest::Error),
     #[error("I/O error: {0}")]

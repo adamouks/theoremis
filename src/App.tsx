@@ -9,7 +9,7 @@ import { api, errorMessage } from "./lib/api";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { MODE_LABELS } from "./lib/prompts";
 import { timeAgo } from "./lib/text";
-import type { Context, Doc, Mode, ModelRef, ProviderStatus, Settings } from "./lib/types";
+import type { ChatGptSession, Context, Doc, Mode, ModelRef, ProviderStatus, Settings } from "./lib/types";
 import { useCollaborator } from "./lib/useCollaborator";
 import { useWorkspace } from "./lib/useWorkspace";
 
@@ -44,6 +44,7 @@ export default function App() {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selected, setSelected] = useState<ModelRef | null>(null);
+  const [chatgpt, setChatgpt] = useState<ChatGptSession | null>(null);
 
   const [texMode, setTexMode] = useState(false);
   const [focus, setFocus] = useState(false);
@@ -60,6 +61,8 @@ export default function App() {
     setModelsLoading(true);
     try {
       setProviders(await api.listModels());
+      // Listing ChatGPT models can renew or end the session, so re-read it alongside.
+      setChatgpt(await api.chatgptSession());
     } catch (err) {
       console.error(err);
     } finally {
@@ -380,6 +383,11 @@ export default function App() {
       {settingsOpen && settings && (
         <SettingsDialog
           settings={settings}
+          chatgpt={chatgpt}
+          onChatgptChange={(session) => {
+            setChatgpt(session);
+            if (session.status !== "signingIn") void refreshModels();
+          }}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => {
             setSettings(next);

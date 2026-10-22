@@ -7,7 +7,6 @@ use crate::error::{AppError, AppResult};
 use crate::providers::Provider;
 
 pub const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
-pub const DEFAULT_OPENAI_URL: &str = "https://api.openai.com/v1";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -17,54 +16,33 @@ pub struct ModelRef {
 }
 
 /// What is persisted to `settings.json`. Empty strings mean "use the default".
+///
+/// Holds no secrets: the ChatGPT sign-in is kept separately, encrypted.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct StoredSettings {
     pub ollama_base_url: String,
-    pub openai_base_url: String,
-    pub openai_api_key: Option<String>,
     pub system_prompt: String,
     pub display_name: String,
     pub last_model: Option<ModelRef>,
 }
 
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum KeySource {
-    Settings,
-    Env,
-    None,
-}
-
-#[derive(Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct KeyStatus {
-    pub source: KeySource,
-    /// A masked form of the key, e.g. `sk-…a1b2`. Never the full key.
-    pub hint: Option<String>,
-}
-
-/// The settings as the frontend sees them. The API key itself never leaves the backend.
+/// The settings as the frontend sees them.
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
     pub ollama_base_url: String,
-    pub openai_base_url: String,
     pub default_ollama_base_url: String,
-    pub default_openai_base_url: String,
-    pub openai_key: KeyStatus,
     pub system_prompt: String,
     pub display_name: String,
     pub last_model: Option<ModelRef>,
 }
 
-/// A partial update. `None` leaves a field untouched; for the API key, `Some("")` clears it.
+/// A partial update. `None` leaves a field untouched.
 #[derive(Deserialize, Debug, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SettingsUpdate {
     pub ollama_base_url: Option<String>,
-    pub openai_base_url: Option<String>,
-    pub openai_api_key: Option<String>,
     pub system_prompt: Option<String>,
     pub display_name: Option<String>,
     pub last_model: Option<ModelRef>,
@@ -77,10 +55,20 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     pub fn load(path: PathBuf) -> Self {
-        let stored = std::fs::read(&path)
+        let raw = std::fs::read(&path)
             .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+        let stored: StoredSettings = raw
+            .as_ref()
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
             .unwrap_or_default();
+        // Earlier builds kept an OpenAI API key here in plain text. It's no longer used, so
+        // don't leave it lying around.
+        if raw.is_some_and(|value| value.get("openaiApiKey").is_some()) {
+            let _ = serde_json::to_vec_pretty(&stored)
+                .map_err(AppError::from)
+                .and_then(|bytes| write_private(&path, &bytes));
+        }
         Self {
             path,
             inner: Mutex::new(stored),
@@ -109,31 +97,20 @@ impl SettingsStore {
     pub fn ollama_base_url(&self) -> String {
         resolve_ollama_url(&self.snapshot().ollama_base_url, &EnvVars::from_process())
     }
-
-    pub fn openai_base_url(&self) -> String {
-        resolve_openai_url(&self.snapshot().openai_base_url, &EnvVars::from_process())
-    }
-
-    pub fn openai_api_key(&self) -> Option<String> {
-        resolve_openai_key(&self.snapshot(), &EnvVars::from_process()).map(|(key, _)| key)
-    }
 }
 
 /// Environment fallbacks, captured explicitly so resolution is testable.
 #[derive(Default)]
 struct EnvVars {
     ollama_host: Option<String>,
-    openai_base_url: Option<String>,
-    openai_api_key: Option<String>,
 }
 
 impl EnvVars {
     fn from_process() -> Self {
-        let get = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
         Self {
-            ollama_host: get("OLLAMA_HOST"),
-            openai_base_url: get("OPENAI_BASE_URL"),
-            openai_api_key: get("OPENAI_API_KEY"),
+            ollama_host: std::env::var("OLLAMA_HOST")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
         }
     }
 }
@@ -141,13 +118,6 @@ impl EnvVars {
 fn apply_update(settings: &mut StoredSettings, update: SettingsUpdate) -> AppResult<()> {
     if let Some(url) = update.ollama_base_url {
         settings.ollama_base_url = validate_url(&url)?;
-    }
-    if let Some(url) = update.openai_base_url {
-        settings.openai_base_url = validate_url(&url)?;
-    }
-    if let Some(key) = update.openai_api_key {
-        let key = key.trim();
-        settings.openai_api_key = (!key.is_empty()).then(|| key.to_string());
     }
     if let Some(prompt) = update.system_prompt {
         settings.system_prompt = prompt;
@@ -176,16 +146,9 @@ fn validate_url(raw: &str) -> AppResult<String> {
 }
 
 fn view_of(settings: &StoredSettings, env: &EnvVars) -> SettingsView {
-    let key = resolve_openai_key(settings, env);
     SettingsView {
         ollama_base_url: settings.ollama_base_url.clone(),
-        openai_base_url: settings.openai_base_url.clone(),
         default_ollama_base_url: resolve_ollama_url("", env),
-        default_openai_base_url: resolve_openai_url("", env),
-        openai_key: KeyStatus {
-            source: key.as_ref().map_or(KeySource::None, |(_, source)| *source),
-            hint: key.map(|(key, _)| mask_key(&key)),
-        },
         system_prompt: settings.system_prompt.clone(),
         display_name: settings.display_name.clone(),
         last_model: settings.last_model.clone(),
@@ -223,41 +186,8 @@ fn normalize_ollama_host(host: &str) -> String {
     format!("{scheme}://{name}:{port}")
 }
 
-fn resolve_openai_url(configured: &str, env: &EnvVars) -> String {
-    if !configured.is_empty() {
-        return configured.to_string();
-    }
-    env.openai_base_url
-        .as_deref()
-        .map(|url| url.trim().trim_end_matches('/').to_string())
-        .unwrap_or_else(|| DEFAULT_OPENAI_URL.to_string())
-}
-
-fn resolve_openai_key(settings: &StoredSettings, env: &EnvVars) -> Option<(String, KeySource)> {
-    if let Some(key) = settings.openai_api_key.as_ref().filter(|k| !k.is_empty()) {
-        return Some((key.clone(), KeySource::Settings));
-    }
-    env.openai_api_key
-        .as_ref()
-        .map(|key| (key.trim().to_string(), KeySource::Env))
-}
-
-fn mask_key(key: &str) -> String {
-    let chars: Vec<char> = key.chars().collect();
-    if chars.len() <= 8 {
-        return "••••".to_string();
-    }
-    let prefix: String = if key.starts_with("sk-") {
-        "sk-".to_string()
-    } else {
-        String::new()
-    };
-    let suffix: String = chars[chars.len() - 4..].iter().collect();
-    format!("{prefix}…{suffix}")
-}
-
 /// Writes a file readable only by the current user (on Unix), via a temp file + rename.
-fn write_private(path: &Path, bytes: &[u8]) -> AppResult<()> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -302,7 +232,6 @@ mod tests {
     fn configured_url_wins_over_env() {
         let env = EnvVars {
             ollama_host: Some("remote:1234".into()),
-            ..Default::default()
         };
         assert_eq!(resolve_ollama_url("", &env), "http://remote:1234");
         assert_eq!(
@@ -316,62 +245,39 @@ mod tests {
     }
 
     #[test]
-    fn key_resolution_and_masking() {
-        let env = EnvVars {
-            openai_api_key: Some("sk-envkey-123456789".into()),
-            ..Default::default()
-        };
+    fn update_validates_urls() {
         let mut settings = StoredSettings::default();
-        let view = view_of(&settings, &env);
-        assert_eq!(view.openai_key.source, KeySource::Env);
-        assert_eq!(view.openai_key.hint.as_deref(), Some("sk-…6789"));
-
-        settings.openai_api_key = Some("sk-proj-abcdefghijkl".into());
-        let view = view_of(&settings, &env);
-        assert_eq!(view.openai_key.source, KeySource::Settings);
-        assert_eq!(view.openai_key.hint.as_deref(), Some("sk-…ijkl"));
-
-        let view = view_of(&StoredSettings::default(), &EnvVars::default());
-        assert_eq!(view.openai_key.source, KeySource::None);
-        assert!(view.openai_key.hint.is_none());
-    }
-
-    #[test]
-    fn view_never_contains_full_key() {
-        let settings = StoredSettings {
-            openai_api_key: Some("sk-secret-value-do-not-leak".into()),
-            ..Default::default()
-        };
-        let json = serde_json::to_string(&view_of(&settings, &EnvVars::default())).unwrap();
-        assert!(!json.contains("secret-value"));
-    }
-
-    #[test]
-    fn update_clears_key_and_validates_urls() {
-        let mut settings = StoredSettings {
-            openai_api_key: Some("sk-old".into()),
-            ..Default::default()
-        };
         apply_update(
             &mut settings,
             SettingsUpdate {
-                openai_api_key: Some("   ".into()),
                 ollama_base_url: Some("http://localhost:11434/".into()),
                 ..Default::default()
             },
         )
         .unwrap();
-        assert!(settings.openai_api_key.is_none());
         assert_eq!(settings.ollama_base_url, "http://localhost:11434");
 
         let err = apply_update(
             &mut settings,
             SettingsUpdate {
-                openai_base_url: Some("api.openai.com".into()),
+                ollama_base_url: Some("localhost:11434".into()),
                 ..Default::default()
             },
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn older_settings_files_still_load() {
+        // Earlier builds stored an API key and called ChatGPT models `openai`.
+        let stored: StoredSettings = serde_json::from_str(
+            r#"{"ollamaBaseUrl":"","openaiApiKey":"sk-old","openaiBaseUrl":"","systemPrompt":"Be rigorous.","lastModel":{"provider":"openai","model":"gpt-5"}}"#,
+        )
+        .unwrap();
+        assert_eq!(stored.system_prompt, "Be rigorous.");
+        assert_eq!(stored.last_model.unwrap().provider, Provider::Chatgpt);
+        let saved = serde_json::to_string(&StoredSettings::default()).unwrap();
+        assert!(!saved.contains("openaiApiKey"));
     }
 
     #[test]
@@ -382,17 +288,12 @@ mod tests {
         store
             .update(SettingsUpdate {
                 system_prompt: Some("Be rigorous.".into()),
-                openai_api_key: Some("sk-test-1234567890".into()),
                 ..Default::default()
             })
             .unwrap();
 
         let reloaded = SettingsStore::load(path.clone());
         assert_eq!(reloaded.snapshot().system_prompt, "Be rigorous.");
-        assert_eq!(
-            reloaded.snapshot().openai_api_key.as_deref(),
-            Some("sk-test-1234567890")
-        );
 
         #[cfg(unix)]
         {

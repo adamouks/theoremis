@@ -1,8 +1,7 @@
 pub mod lines;
 pub mod ollama;
-pub mod openai;
 #[cfg(test)]
-mod test_server;
+pub mod test_server;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +9,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Ollama,
-    Openai,
+    /// The person's ChatGPT plan, via Sign in with ChatGPT. Older settings call it `openai`.
+    #[serde(alias = "openai")]
+    Chatgpt,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +46,8 @@ pub enum StreamEvent {
 pub struct ModelInfo {
     pub provider: Provider,
     pub id: String,
+    /// A friendlier display name, when the provider has one.
+    pub name: Option<String>,
     /// Short secondary text, e.g. parameter size and quantization.
     pub detail: Option<String>,
 }
@@ -61,7 +64,7 @@ pub struct ProviderStatus {
 
 /// Turns a non-success HTTP response body into a readable message.
 ///
-/// Understands OpenAI's `{"error":{"message":…}}` and Ollama's `{"error":"…"}` shapes.
+/// Understands `{"error":{"message":…}}` and Ollama's `{"error":"…"}` shapes.
 pub fn error_from_body(service: &str, status: reqwest::StatusCode, body: &str) -> String {
     let detail = serde_json::from_str::<serde_json::Value>(body)
         .ok()

@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
+  ChatGptSession,
   ChatMessage,
   Doc,
   DocumentSummary,
@@ -25,6 +26,15 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (update: SettingsUpdate) => invoke<Settings>("update_settings", { update }),
   listModels: () => invoke<ProviderStatus[]>("list_models"),
+
+  chatgptSession: () => invoke<ChatGptSession>("chatgpt_session"),
+  /**
+   * Opens ChatGPT's sign-in page in the browser and resolves once the person finishes there.
+   * `fresh` sets the saved account aside so a different one can sign in.
+   */
+  chatgptSignIn: (fresh = false) => invoke<ChatGptSession>("chatgpt_sign_in", { fresh }),
+  chatgptCancelSignIn: () => invoke<boolean>("chatgpt_cancel_sign_in"),
+  chatgptSignOut: () => invoke<ChatGptSession>("chatgpt_sign_out"),
 
   /**
    * Resolves once the reply is complete or cancelled and every streamed event has been

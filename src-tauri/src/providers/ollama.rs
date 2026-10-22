@@ -91,6 +91,7 @@ fn models_from_tags(tags: TagsResponse) -> Vec<ModelInfo> {
             ModelInfo {
                 provider: Provider::Ollama,
                 id: m.name,
+                name: None,
                 detail,
             }
         })

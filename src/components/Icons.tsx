@@ -152,6 +152,12 @@ export const Retry = (p: IconProps) => (
 );
 
 /** The collaborator's mark: a small open square in the accent colour. */
+export const ArrowUpRight = (p: IconProps) => (
+  <Icon size={12} viewBox="0 0 12 12" {...p}>
+    <path d="M4 8 8.5 3.5M4.5 3.5h4v4" />
+  </Icon>
+);
+
 export function CollaboratorGlyph({ size = 9 }: { size?: number }) {
   return <span className="collab-glyph" style={{ width: size, height: size }} aria-hidden="true" />;
 }

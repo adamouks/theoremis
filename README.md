@@ -2,8 +2,11 @@
 
 The AI-native workspace for mathematics. Explore conjectures, develop proofs and test every step
 with an AI collaborator that works inside your document. A desktop app built with
-[Tauri](https://tauri.app); the collaborator runs on [Ollama](https://ollama.com) models on your
-machine or on OpenAI's ChatGPT models.
+[Tauri](https://tauri.app); the collaborator runs on your ChatGPT plan (Sign in with ChatGPT) or
+on [Ollama](https://ollama.com) models on your machine.
+
+**[Download Theoremis](https://theoremis.vercel.app)** for macOS, Windows or Linux, or grab an
+installer from the [releases](https://github.com/adamouks/theoremis/releases/latest).
 
 ![The Theoremis workspace: a proof with numbered equations, and the collaborator reviewing a step](docs/screenshot.png)
 
@@ -22,8 +25,8 @@ machine or on OpenAI's ChatGPT models.
   Every change can be undone.
 - **Projects, threads and focus.** Group documents into projects, keep several threads per
   document, jump anywhere with `⌘K`, and hide everything but the proof with `⌘.`.
-- **Local-first.** Documents are JSON files on your machine. Your API key never reaches the
-  interface.
+- **Local-first.** Documents are JSON files on your machine. Your ChatGPT sign-in is encrypted
+  with your system keychain and never reaches the interface.
 
 The interface follows the _Theoremis Workspace_ design from Claude Design: Geist and Literata
 (bundled, so it works offline), the dark indigo palette and the status marks.
@@ -56,12 +59,37 @@ The first launch opens an example project, _Figurate numbers_, to try the tools 
 npm run tauri build
 ```
 
-The installers end up in `src-tauri/target/release/bundle/`. You can also push a tag like
-`v0.1.0` (or run the **Release** workflow by hand) to have GitHub Actions build macOS, Windows
-and Linux installers into a draft release. Those builds aren't code-signed yet, so macOS and
-Windows will warn the first time you open them.
+The installers end up in `src-tauri/target/release/bundle/`.
+
+### Publish a release
+
+Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`), then push a tag like `v0.2.0`
+or run the **Release** workflow from the Actions tab. It builds the macOS (Apple silicon and
+Intel), Windows and Linux installers, attaches them to a release, and publishes it once every
+platform has built. The landing page's Download buttons pick the right installer for each visitor
+from the latest release.
+
+The builds aren't notarized by Apple or signed for Windows yet, so the first launch needs one extra
+step: on macOS, **System Settings → Privacy & Security → Open Anyway**; on Windows, **More info →
+Run anyway** in SmartScreen.
 
 ## Connecting models
+
+### ChatGPT (your plan)
+
+Open **Settings → ChatGPT → Sign in with ChatGPT**. Your browser opens OpenAI's sign-in page; once
+you approve, the collaborator runs on your ChatGPT plan (such as Plus or Pro) and its models appear
+in the model picker. Replies count toward your plan's limits. **Manage usage** opens
+[your usage page](https://chatgpt.com/settings/usage), and **Sign out** revokes Theoremis's access.
+
+How it works: Theoremis is a public OAuth client of OpenAI's [Sign in with
+ChatGPT](https://developers.openai.com/siwc), so there is no API key or app secret anywhere in the
+code. The first sign-in registers your copy of Theoremis with ChatGPT; sign-in uses PKCE with a
+loopback redirect to `127.0.0.1`, the ID token is verified against OpenAI's published keys, and
+access tokens are refreshed in the background. Requests go to the Responses API with
+`store: false`. All of this happens in the Rust backend, and the tokens are stored encrypted with a
+key held in your system keychain (Keychain on macOS, Credential Manager on Windows, the Secret
+Service on Linux, e.g. GNOME Keyring or KWallet).
 
 ### Ollama (local)
 
@@ -72,16 +100,6 @@ Windows will warn the first time you open them.
 Theoremis talks to `http://127.0.0.1:11434` by default. It also honours `OLLAMA_HOST`, and you
 can point it at another server in **Settings → Ollama → Server URL**. Reasoning models (Qwen 3,
 DeepSeek-R1) show their thinking in a collapsible section.
-
-### ChatGPT (OpenAI)
-
-1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
-2. Paste it in **Settings → ChatGPT → API key**.
-
-API usage is billed to your OpenAI Platform account, separately from a ChatGPT Plus or Pro
-subscription. If `OPENAI_API_KEY` is set in the environment Theoremis was launched from, it's used
-when no key is saved in the app. **API base URL** accepts any OpenAI-compatible endpoint
-(OpenRouter, LM Studio, vLLM, …).
 
 ## Keyboard
 
@@ -101,7 +119,8 @@ On Windows and Linux use `Ctrl` for `⌘`.
 
 | What | Where |
 | --- | --- |
-| Settings, including the API key | `settings.json` in the app config directory, readable only by your user on macOS and Linux |
+| Settings | `settings.json` in the app config directory |
+| ChatGPT sign-in | `chatgpt.json` in the app config directory, encrypted (AES-256-GCM) with a key in your system keychain |
 | Projects | `workspace/projects.json` in the app data directory |
 | Documents, with their collaborator threads | one JSON file each in `workspace/documents/` |
 
@@ -123,6 +142,10 @@ npm run site:dev     # http://localhost:1430
 npm run site:build   # static files in site/dist, ready for any static host
 ```
 
+It's deployed on Vercel at [theoremis.vercel.app](https://theoremis.vercel.app): `vercel.json`
+tells Vercel to build the site rather than the desktop app, and every push to the default branch
+redeploys it.
+
 The design's "Get updates" form needs somewhere to send addresses. Set `VITE_UPDATES_ENDPOINT` to a
 form endpoint (Buttondown, Formspree, …) when building; without one, the page links to the GitHub
 releases instead.
@@ -138,15 +161,18 @@ src/                        React + TypeScript app (Vite)
   lib/useCollaborator.ts    Streaming replies into threads; revisions and suggestions
 src-tauri/src/
   lib.rs                    Tauri commands and app state
+  chatgpt/                  Sign in with ChatGPT
+    oauth.rs                OIDC discovery, PKCE, loopback callback, token refresh, ID tokens
+    vault.rs                Credentials encrypted with a key from the system keychain
+    api.rs                  Model catalog and streaming Responses
   providers/ollama.rs       Ollama: /api/tags, streaming /api/chat (NDJSON)
-  providers/openai.rs       OpenAI: /models, streaming /chat/completions (SSE)
-  settings.rs               Settings persistence and API key handling
+  settings.rs               Settings persistence
   storage.rs                Projects and document files
 site/                       The landing page
 ```
 
 All network calls happen in Rust. That avoids CORS entirely (Ollama rejects browser origins by
-default) and keeps the API key out of the web view. Replies stream to the UI over a Tauri
+default) and keeps every credential out of the web view. Replies stream to the UI over a Tauri
 [channel](https://v2.tauri.app/develop/calling-frontend/#channels). Stopping a reply drops the
 HTTP request, which also stops generation on the server.
 

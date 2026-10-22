@@ -1,14 +1,15 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { MODE_LABELS } from "../lib/prompts";
 import { clockTime, initials, timeAgo } from "../lib/text";
-import type {
-  Context,
-  Doc,
-  Mode,
-  ModelRef,
-  ProviderStatus,
-  Thread,
-  ThreadMessage,
+import {
+  PROVIDER_LABELS,
+  type Context,
+  type Doc,
+  type Mode,
+  type ModelRef,
+  type ProviderStatus,
+  type Thread,
+  type ThreadMessage,
 } from "../lib/types";
 import { splitProposals, type NumberedBlock } from "../lib/doc";
 import { numberEquations } from "../lib/text";
@@ -211,12 +212,12 @@ function EmptyThread({
     return (
       <div className="thread-empty">
         <CollaboratorGlyph size={12} />
-        <p>Connect a model to start. Run one locally with Ollama, or add your OpenAI key to use ChatGPT.</p>
+        <p>Connect a model to start. Sign in with ChatGPT to use your plan, or run one locally with Ollama.</p>
         <ul className="thread-empty__providers">
           {providers.map((p) => (
             <li key={p.provider}>
               <span className={`dot${p.available ? " dot--on" : ""}`} />
-              <span>{p.provider === "openai" ? "ChatGPT" : "Ollama"}</span>
+              <span>{PROVIDER_LABELS[p.provider]}</span>
               <span className="thread-empty__state">{p.message ?? (p.available ? "Connected" : "Not connected")}</span>
             </li>
           ))}

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { PROVIDER_LABELS, type ModelRef, type Provider, type ProviderStatus } from "../lib/types";
-import { Check, ChevronDown, OllamaMark, OpenAILogo } from "./Icons";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { CHATGPT_USAGE_URL, PROVIDER_LABELS, type ModelRef, type Provider, type ProviderStatus } from "../lib/types";
+import { ArrowUpRight, Check, ChevronDown, OllamaMark, OpenAILogo } from "./Icons";
 
 export function ProviderMark({ provider, size = 13 }: { provider: Provider; size?: number }) {
-  return provider === "openai" ? <OpenAILogo size={size} /> : <OllamaMark size={size} />;
+  return provider === "ollama" ? <OllamaMark size={size} /> : <OpenAILogo size={size} />;
 }
 
 interface Props {
@@ -18,6 +19,11 @@ interface Props {
 export function ModelPicker({ providers, loading, selected, onSelect, onRefresh, onOpenSettings }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const selectedName = selected
+    ? providers
+        .flatMap((p) => p.models)
+        .find((m) => m.provider === selected.provider && m.id === selected.model)?.name ?? selected.model
+    : null;
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +53,7 @@ export function ModelPicker({ providers, loading, selected, onSelect, onRefresh,
           <>
             <ProviderMark provider={selected.provider} />
             <span className="model-pill__model" title={`${PROVIDER_LABELS[selected.provider]} · ${selected.model}`}>
-              {selected.model}
+              {selectedName}
             </span>
           </>
         ) : (
@@ -82,12 +88,35 @@ export function ModelPicker({ providers, loading, selected, onSelect, onRefresh,
                     }}
                   >
                     <span className="menu__check">{active && <Check />}</span>
-                    <span className="model-menu__id">{model.id}</span>
+                    <span className="model-menu__id" title={model.id}>
+                      {model.name ?? model.id}
+                    </span>
                     {model.detail && <span className="menu__hint">{model.detail}</span>}
                   </button>
                 );
               })}
               {status.message && <p className="model-menu__note">{status.message}</p>}
+              {status.provider === "chatgpt" && (
+                <div className="model-menu__connect">
+                  {status.available ? (
+                    <button type="button" className="link-button" onClick={() => void openUrl(CHATGPT_USAGE_URL)}>
+                      Manage usage <ArrowUpRight size={9} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="button chatgpt-button button--small"
+                      onClick={() => {
+                        setOpen(false);
+                        onOpenSettings();
+                      }}
+                    >
+                      <OpenAILogo size={12} />
+                      Sign in with ChatGPT
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           ))}
           <div className="menu__divider" />

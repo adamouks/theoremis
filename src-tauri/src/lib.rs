@@ -1,3 +1,4 @@
+mod chatgpt;
 mod error;
 mod providers;
 mod settings;
@@ -12,14 +13,16 @@ use tauri::Manager;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
+use chatgpt::{ChatGpt, Session};
 use error::{AppError, AppResult};
-use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ollama, openai};
+use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ollama};
 use settings::{SettingsStore, SettingsUpdate, SettingsView};
 use storage::{DocumentSummary, Project, Workspace, WorkspaceStore};
 
 struct AppState {
     settings: SettingsStore,
     workspace: WorkspaceStore,
+    chatgpt: ChatGpt,
     http: reqwest::Client,
     /// Cancellation handles for replies that are still streaming, keyed by request id.
     streams: Mutex<HashMap<String, CancellationToken>>,
@@ -47,13 +50,44 @@ fn update_settings(
 #[tauri::command]
 async fn list_models(state: tauri::State<'_, AppState>) -> AppResult<Vec<ProviderStatus>> {
     let ollama_url = state.settings.ollama_base_url();
-    let openai_url = state.settings.openai_base_url();
-    let openai_key = state.settings.openai_api_key();
-    let (ollama, openai) = tokio::join!(
+    let (ollama, chatgpt) = tokio::join!(
         ollama::list_models(&state.http, &ollama_url),
-        openai::list_models(&state.http, &openai_url, openai_key.as_deref()),
+        state.chatgpt.provider_status(),
     );
-    Ok(vec![ollama, openai])
+    Ok(vec![ollama, chatgpt])
+}
+
+#[tauri::command]
+async fn chatgpt_session(state: tauri::State<'_, AppState>) -> Result<Session, ()> {
+    Ok(state.chatgpt.session().await)
+}
+
+/// Opens ChatGPT's sign-in page in the browser and waits for the person to finish there.
+#[tauri::command]
+async fn chatgpt_sign_in(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    fresh: bool,
+) -> AppResult<Session> {
+    use tauri_plugin_opener::OpenerExt;
+    state
+        .chatgpt
+        .sign_in(fresh, |url| {
+            app.opener().open_url(url, None::<&str>).map_err(|err| {
+                AppError::msg(format!("Couldn't open your browser to sign in: {err}"))
+            })
+        })
+        .await
+}
+
+#[tauri::command]
+fn chatgpt_cancel_sign_in(state: tauri::State<'_, AppState>) -> bool {
+    state.chatgpt.cancel_sign_in()
+}
+
+#[tauri::command]
+async fn chatgpt_sign_out(state: tauri::State<'_, AppState>) -> AppResult<Session> {
+    state.chatgpt.sign_out().await
 }
 
 #[tauri::command]
@@ -98,12 +132,7 @@ async fn run_chat(
                 let url = state.settings.ollama_base_url();
                 ollama::stream_chat(&state.http, &url, &model, &messages, emit).await
             }
-            Provider::Openai => {
-                let url = state.settings.openai_base_url();
-                let key = state.settings.openai_api_key();
-                openai::stream_chat(&state.http, &url, key.as_deref(), &model, &messages, emit)
-                    .await
-            }
+            Provider::Chatgpt => state.chatgpt.stream_chat(&model, &messages, emit).await,
         }
     };
     // Dropping the request future closes the connection, which also stops generation server-side.
@@ -172,9 +201,14 @@ pub fn run() {
                 .connect_timeout(Duration::from_secs(10))
                 .user_agent(concat!("Theoremis/", env!("CARGO_PKG_VERSION")))
                 .build()?;
+            let vault = chatgpt::vault::Vault::new(
+                config_dir.join("chatgpt.json"),
+                Box::new(chatgpt::vault::OsKeyStore),
+            );
             app.manage(AppState {
                 settings: SettingsStore::load(config_dir.join("settings.json")),
                 workspace: WorkspaceStore::new(data_dir.join("workspace")),
+                chatgpt: ChatGpt::new(vault)?,
                 http,
                 streams: Mutex::new(HashMap::new()),
             });
@@ -184,6 +218,10 @@ pub fn run() {
             get_settings,
             update_settings,
             list_models,
+            chatgpt_session,
+            chatgpt_sign_in,
+            chatgpt_cancel_sign_in,
+            chatgpt_sign_out,
             chat_stream,
             chat_cancel,
             load_workspace,
