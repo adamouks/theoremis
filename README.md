@@ -83,7 +83,8 @@ once every platform has built. Changes to only the site or the docs don't make a
 Versions count up on their own: the major and minor come from `version` in
 `app/src-tauri/tauri.conf.json` and the patch is the workflow's run number (`0.1.12`, `0.1.13`, …).
 Raise the minor or major there when you want to mark a bigger step. You can also run the workflow
-from the Actions tab to release the current commit regardless of what changed.
+from the Actions tab to release the current commit regardless of what changed or whether it was
+already released.
 
 Installed copies of Theoremis check `latest.json` on the latest release a few seconds after launch
 and every six hours, download a newer version in the background, and show **Restart to update** in

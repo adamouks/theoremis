@@ -44,8 +44,9 @@ jobs:
             const sha = process.env.SHA;
             const releases = await github.paginate(github.rest.repos.listReleases, context.repo);
 
-            // The same commit can arrive from more than one branch; release it once.
-            if (releases.some((r) => !r.draft && r.target_commitish === sha)) {
+            // The same commit can arrive from more than one branch; release it once. A run started
+            // by hand always releases, e.g. to republish once the update-signing key is set.
+            if (process.env.MANUAL !== "true" && releases.some((r) => !r.draft && r.target_commitish === sha)) {
               core.notice(`${sha.slice(0, 7)} is already released.`);
               return;
             }
