@@ -5,8 +5,15 @@ with an AI collaborator that works inside your document. A desktop app built wit
 [Tauri](https://tauri.app); the collaborator runs on your ChatGPT plan (Sign in with ChatGPT) or
 on [Ollama](https://ollama.com) models on your machine.
 
-**[Download Theoremis](https://theoremis.vercel.app)** for macOS, Windows or Linux, or grab an
+**[Download Theoremis](https://theoremis.com)** for macOS, Windows or Linux, or grab an
 installer from the [releases](https://github.com/adamouks/theoremis/releases/latest).
+
+The repository has two parts, each with its own dependencies and build:
+
+| | |
+| --- | --- |
+| [`app/`](app) | The desktop app: a React interface (`app/src`) and a Rust backend (`app/src-tauri`) |
+| [`site/`](site) | [theoremis.com](https://theoremis.com), a static site |
 
 ![The Theoremis workspace: a proof with numbered equations, and the collaborator reviewing a step](docs/screenshot.png)
 
@@ -34,7 +41,7 @@ installer from the [releases](https://github.com/adamouks/theoremis/releases/lat
 The interface follows the _Theoremis Workspace_ design from Claude Design: Geist and Literata
 (bundled, so it works offline), the dark indigo palette and the status marks.
 
-## Getting started
+## The app
 
 ### Prerequisites
 
@@ -50,6 +57,7 @@ The interface follows the _Theoremis Workspace_ design from Claude Design: Geist
 ### Run in development
 
 ```sh
+cd app
 npm install
 npm run tauri dev
 ```
@@ -59,28 +67,28 @@ The first launch opens an example project, _Figurate numbers_, to try the tools 
 ### Build an installer
 
 ```sh
+cd app
 npm run tauri build
 ```
 
-The installers end up in `src-tauri/target/release/bundle/`.
+The installers end up in `app/src-tauri/target/release/bundle/`.
 
 ### Releases and automatic updates
 
 There's nothing to do by hand: every push to `main` or `claude/epic-meitner-tnvutq` that passes CI
-and changes the app (anything under `src/`, `src-tauri/`, `public/` or the build config) becomes a
-release. The **Release** workflow builds the macOS (Apple silicon and Intel), Windows and Linux
+and changes the app (anything under `app/`) becomes a release. The **Release** workflow builds the macOS (Apple silicon and Intel), Windows and Linux
 installers, attaches them with signed update bundles and a `latest.json`, and publishes the release
 once every platform has built. Changes to only the site or the docs don't make a release.
 
 Versions count up on their own: the major and minor come from `version` in
-`src-tauri/tauri.conf.json` and the patch is the workflow's run number (`0.1.12`, `0.1.13`, …).
+`app/src-tauri/tauri.conf.json` and the patch is the workflow's run number (`0.1.12`, `0.1.13`, …).
 Raise the minor or major there when you want to mark a bigger step. You can also run the workflow
 from the Actions tab to release the current commit regardless of what changed.
 
 Installed copies of Theoremis check `latest.json` on the latest release a few seconds after launch
 and every six hours, download a newer version in the background, and show **Restart to update** in
 the sidebar (and in **Settings → Updates**). Updates are verified against the public key in
-`src-tauri/tauri.conf.json`, so they need the matching private key in the repository secrets:
+`app/src-tauri/tauri.conf.json`, so they need the matching private key in the repository secrets:
 
 | Secret | Value |
 | --- | --- |
@@ -201,37 +209,39 @@ The directories follow each OS's conventions for the app id `app.theoremis.deskt
 `~/.config/app.theoremis.desktop` and `~/.local/share/app.theoremis.desktop` on Linux,
 `%APPDATA%\app.theoremis.desktop` on Windows).
 
-## The landing page
+## The site
 
-![The Theoremis landing page](docs/landing.png)
+![theoremis.com](docs/landing.png)
 
-`site/` holds the website, built from the _Theoremis Landing_ design: the markup converted from the
-design file, its hover styles in `site/src/hover.css`, and the animated review in the hero ported
-to `site/src/main.ts`.
+`site/` is [theoremis.com](https://theoremis.com), built from the _Theoremis Landing_ design: the
+markup converted from the design file, its hover styles in `site/src/hover.css`, the animated review
+in the hero in `site/src/main.ts`, and Download buttons that pick the installer for each visitor's
+computer from the latest release (`site/src/download.ts`).
 
 ```sh
-npm run site:dev     # http://localhost:1430
-npm run site:build   # static files in site/dist, ready for any static host
+cd site
+npm install
+npm run dev     # http://localhost:1430
+npm run build   # static files in site/dist
 ```
 
-It's deployed on Vercel at [theoremis.vercel.app](https://theoremis.vercel.app): `vercel.json`
-tells Vercel to build the site rather than the desktop app, and every push to the default branch
-redeploys it.
+It's hosted on Vercel. `vercel.json` at the repository root builds `site/`, and every push to
+`main` redeploys theoremis.com.
 
 The design's "Get updates" form needs somewhere to send addresses. Set `VITE_UPDATES_ENDPOINT` to a
 form endpoint (Buttondown, Formspree, …) when building; without one, the page links to the GitHub
 releases instead.
 
-## How it's built
+## How the app is built
 
 ```
-src/                        React + TypeScript app (Vite)
+app/src/                    React + TypeScript interface (Vite)
   components/               Sidebar, document, blocks, collaborator, settings, palette
   lib/doc.ts                Statuses, equation numbering, block labels, proposals
   lib/prompts.ts            Collaborator modes and the request sent to the model
   lib/useWorkspace.ts       Projects and documents, with autosave
   lib/useCollaborator.ts    Streaming replies into threads; revisions and suggestions
-src-tauri/src/
+app/src-tauri/src/
   lib.rs                    Tauri commands and app state
   chatgpt/                  Sign in with ChatGPT
     oauth.rs                OIDC discovery, PKCE, loopback callback, token refresh, ID tokens
@@ -242,7 +252,6 @@ src-tauri/src/
   providers/ollama.rs       Ollama: /api/tags, streaming /api/chat (NDJSON)
   settings.rs               Settings persistence
   storage.rs                Projects and document files
-site/                       The landing page
 ```
 
 All network calls happen in Rust. That avoids CORS entirely (Ollama rejects browser origins by
@@ -253,11 +262,12 @@ HTTP request, which also stops generation on the server.
 ### Checks
 
 ```sh
-npm run typecheck && npm test                               # frontend
-cd src-tauri && cargo clippy --all-targets && cargo test   # backend
+cd app && npm run typecheck && npm test                          # interface
+cd app/src-tauri && cargo clippy --all-targets && cargo test     # backend
+cd site && npm run build                                         # site
 ```
 
-CI runs both, and builds the site, on every push.
+CI runs all three on every push.
 
 ## Roadmap
 

@@ -1,10 +1,10 @@
 name: Release
 
-# Every push that passes CI and changes the app becomes a release: installers for macOS, Windows
-# and Linux, plus the signed update bundles and latest.json that installed copies of Theoremis
-# check for. The version is the major.minor from src-tauri/tauri.conf.json and this workflow's run
-# number as the patch, so each release is newer than the last. It can also be run by hand from
-# the Actions tab.
+# Every push that passes CI and changes the app (anything under app/) becomes a release:
+# installers for macOS, Windows and Linux, plus the signed update bundles and latest.json that
+# installed copies of Theoremis check for. The version is the major.minor from
+# app/src-tauri/tauri.conf.json and this workflow's run number as the patch, so each release is
+# newer than the last. It can also be run by hand from the Actions tab.
 on:
   workflow_run:
     workflows: [CI]
@@ -51,7 +51,7 @@ jobs:
             }
 
             // Only changes to the app itself are worth an update; the site and docs ship elsewhere.
-            const app = /^(src\/|src-tauri\/|public\/|index\.html$|package(-lock)?\.json$|vite\.config\.ts$|tsconfig[^/]*\.json$)/;
+            const app = /^app\//;
             const previous = releases.find((r) => !r.draft && !r.prerelease);
             let changes = [];
             if (previous) {
@@ -68,7 +68,7 @@ jobs:
               }
             }
 
-            const { version: configured } = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+            const { version: configured } = JSON.parse(fs.readFileSync("app/src-tauri/tauri.conf.json", "utf8"));
             const [major, minor] = configured.split(".");
             const version = `${major}.${minor}.${context.runNumber}`;
             const tag = `v${version}`;
@@ -122,15 +122,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: app/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: app/src-tauri -> target
       - run: npm ci
+        working-directory: app
       - name: Set the version and the update bundles
         shell: bash
+        working-directory: app
         env:
           VERSION: ${{ needs.create-release.outputs.version }}
           UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -184,6 +187,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          projectPath: app
           releaseId: ${{ needs.create-release.outputs.release_id }}
           # latest.json is written once, below, from every platform's signature.
           includeUpdaterJson: false

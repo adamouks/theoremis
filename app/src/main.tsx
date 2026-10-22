@@ -17,7 +17,7 @@ function DesktopOnly() {
     <main className="desktop-only">
       <h1>Theoremis is a desktop app</h1>
       <p>Your documents and your ChatGPT sign-in stay on your computer, so the workspace runs as an app rather than in the browser.</p>
-      <a className="button button--cream" href="https://theoremis.vercel.app">
+      <a className="button button--cream" href="https://theoremis.com">
         Download Theoremis
       </a>
     </main>

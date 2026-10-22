@@ -9,22 +9,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
+  app-frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run site:build
 
-  backend:
+  app-backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/src-tauri
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri system dependencies
@@ -36,12 +42,24 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: app/src-tauri -> target
       # tauri::generate_context! checks that the frontend output directory exists.
-      - run: mkdir -p dist
+      - run: mkdir -p ../dist
       - run: cargo fmt --check
-        working-directory: src-tauri
       - run: cargo clippy --all-targets -- -D warnings
-        working-directory: src-tauri
       - run: cargo test
-        working-directory: src-tauri
+
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run build

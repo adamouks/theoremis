@@ -9,10 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri",
-    "site:dev": "vite --config site/vite.config.ts",
-    "site:build": "vite build --config site/vite.config.ts",
-    "site:preview": "vite preview --config site/vite.config.ts"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

@@ -1,4 +1,4 @@
-Download the installer for your computer below, or from https://theoremis.vercel.app.
+Download the installer for your computer below, or from https://theoremis.com.
 
 | | |
 | --- | --- |
