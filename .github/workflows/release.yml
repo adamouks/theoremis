@@ -80,6 +80,37 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
+      # With a Developer ID certificate in the repository secrets, the app is signed and
+      # notarized so macOS opens it without a warning. Without one it's ad-hoc signed
+      # (bundle.macOS.signingIdentity "-") and Gatekeeper asks on first launch.
+      - name: Use the Developer ID certificate, if configured
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "::warning::No Developer ID certificate in the secrets: this macOS build is ad-hoc signed, so Gatekeeper will ask before it opens."
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE=$(printf %s "$APPLE_CERTIFICATE" | tr -d '\r\n ')"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            # The bundler signs with the certificate's own identity; this only has to match it.
+            echo "APPLE_SIGNING_IDENTITY=Developer ID Application"
+          } >> "$GITHUB_ENV"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            {
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID aren't all set: the app is signed but not notarized, so Gatekeeper will still warn."
+          fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

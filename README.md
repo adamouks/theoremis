@@ -69,9 +69,36 @@ Intel), Windows and Linux installers, attaches them to a release, and publishes 
 platform has built. The landing page's Download buttons pick the right installer for each visitor
 from the latest release.
 
-The builds aren't notarized by Apple or signed for Windows yet, so the first launch needs one extra
-step: on macOS, **System Settings → Privacy & Security → Open Anyway**; on Windows, **More info →
-Run anyway** in SmartScreen.
+### Signing the macOS app
+
+macOS opens a downloaded app without asking only if it is signed with an Apple Developer ID and
+notarized by Apple. Until the release workflow has those credentials, the macOS build is ad-hoc
+signed and Gatekeeper says it "could not verify" Theoremis. People can still open it with **System
+Settings → Privacy & Security → Open Anyway**.
+
+To sign and notarize every release:
+
+1. Join the [Apple Developer Program](https://developer.apple.com/programs/) (paid, yearly).
+2. Create a **Developer ID Application** certificate (Xcode → Settings → Accounts → Manage
+   Certificates → + → Developer ID Application), then export it from Keychain Access as a `.p12`
+   file with a password.
+3. Create an app-specific password at [account.apple.com](https://account.apple.com) → Sign-In and
+   Security → App-Specific Passwords, and find your Team ID under Membership details at
+   [developer.apple.com/account](https://developer.apple.com/account).
+4. In the repository's **Settings → Secrets and variables → Actions**, add:
+
+   | Secret | Value |
+   | --- | --- |
+   | `APPLE_CERTIFICATE` | the output of `base64 -i DeveloperID.p12` |
+   | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` file's password |
+   | `APPLE_ID` | your Apple Account email |
+   | `APPLE_PASSWORD` | the app-specific password |
+   | `APPLE_TEAM_ID` | your Team ID |
+
+5. Bump the version and run the **Release** workflow. The macOS builds are then signed, notarized
+   and stapled, and open without a warning.
+
+Windows builds aren't signed yet either, so SmartScreen may ask once (**More info → Run anyway**).
 
 ## Connecting models
 

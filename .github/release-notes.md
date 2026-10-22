@@ -7,9 +7,9 @@ Download the installer for your computer below, or from https://theoremis.vercel
 | **Windows** | `Theoremis_*_x64-setup.exe` |
 | **Linux** | `.AppImage`, `.deb` or `.rpm` |
 
-These builds aren't notarized by Apple or signed for Windows yet, so the first launch needs one extra step:
+If your computer asks before opening Theoremis the first time:
 
-- **macOS:** open the app once, then go to System Settings → Privacy & Security and choose **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/Theoremis.app`.
+- **macOS** ("Apple could not verify Theoremis"): choose **Done**, then go to System Settings → Privacy & Security and choose **Open Anyway**.
 - **Windows:** if SmartScreen appears, choose **More info → Run anyway**.
 - **Linux:** make the AppImage executable with `chmod +x Theoremis_*.AppImage`.
 
