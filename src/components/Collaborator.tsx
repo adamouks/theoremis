@@ -7,7 +7,9 @@ import {
   type Doc,
   type Mode,
   type ModelRef,
+  type LeanStatus,
   type ProviderStatus,
+  type StoredLeanCheck,
   type Thread,
   type ThreadMessage,
 } from "../lib/types";
@@ -29,7 +31,8 @@ import {
   StatusGlyph,
   StopSquare,
 } from "./Icons";
-import { Markdown } from "./Markdown";
+import { LeanCheckPanel } from "./LeanCheck";
+import { Markdown, type CodeFooter } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
 
 const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
@@ -51,6 +54,10 @@ export interface CollaboratorActions {
   onSelectModel: (model: ModelRef) => void;
   onRefreshModels: () => void;
   onOpenSettings: () => void;
+  onLeanChecked: (threadId: string, messageId: string, check: StoredLeanCheck) => void;
+  onMarkVerified: (blockId: string) => void;
+  /** Sends a follow-up in the current thread, e.g. Lean's errors with a request to fix them. */
+  onFollowUp: (mode: Mode, text: string) => void;
 }
 
 interface Props extends CollaboratorActions {
@@ -59,6 +66,7 @@ interface Props extends CollaboratorActions {
   thread: Thread | null;
   context: Context | null;
   providers: ProviderStatus[];
+  lean: LeanStatus | null;
   modelsLoading: boolean;
   model: ModelRef | null;
   hasModel: boolean;
@@ -174,6 +182,7 @@ export function Collaborator(props: Props) {
                 isLast={message === last}
                 canRetry={props.hasModel && !streamingMessageId && !props.busyElsewhere}
                 pin={props.pins.get(message.id)}
+                lean={props.lean}
                 actions={props}
               />
             ),
@@ -287,6 +296,7 @@ function AssistantMessage({
   isLast,
   canRetry,
   pin,
+  lean,
   actions,
 }: {
   message: ThreadMessage;
@@ -297,6 +307,7 @@ function AssistantMessage({
   isLast: boolean;
   canRetry: boolean;
   pin?: Pin;
+  lean: LeanStatus | null;
   actions: CollaboratorActions;
 }) {
   const [copied, setCopied] = useState(false);
@@ -305,6 +316,29 @@ function AssistantMessage({
   const prose = parts && (parts.revision || parts.addition) ? parts.body : message.content;
   const inserted = message.insertedBlockId ? doc.blocks.find((b) => b.id === message.insertedBlockId) : undefined;
   const insertedPin = message.insertedBlockId ? numbered.find((n) => n.block.id === message.insertedBlockId)?.suggestionIndex : undefined;
+  const leanProved = !!message.leanChecks?.some((c) => c.outcome === "proved" && message.content.includes(c.code));
+
+  // The block the question was about, so a proof Lean accepts can mark it verified.
+  const index = thread.messages.findIndex((m) => m.id === message.id);
+  const asked = thread.messages
+    .slice(0, index)
+    .reverse()
+    .find((m) => m.role === "user" && m.context?.blockId);
+  const targetBlock = asked?.context?.blockId ? numbered.find((n) => n.block.id === asked.context?.blockId) : undefined;
+
+  const leanFooter: CodeFooter = (language, code) =>
+    language === "lean" || language === "lean4" ? (
+      <LeanCheckPanel
+        code={code}
+        stored={message.leanChecks?.find((c) => c.code === code)}
+        lean={lean}
+        target={targetBlock && { label: targetBlock.label, verified: targetBlock.block.status === "verified" }}
+        onChecked={(check) => actions.onLeanChecked(thread.id, message.id, check)}
+        onMarkVerified={targetBlock && (() => actions.onMarkVerified(targetBlock.block.id))}
+        onAskToFix={canRetry ? (text) => actions.onFollowUp("formalize", text) : undefined}
+        onOpenSettings={actions.onOpenSettings}
+      />
+    ) : null;
 
   return (
     <section className="msg msg--ai">
@@ -315,9 +349,15 @@ function AssistantMessage({
           {MODE_LABELS[message.mode]} · {clockTime(message.createdAt)}
         </span>
         <span className="msg__spacer" />
-        <span className="badge-unverified" title="Model reasoning. Nothing in this response has been checked by Lean or by you.">
-          NOT VERIFIED
-        </span>
+        {leanProved ? (
+          <span className="badge-lean" title="Lean accepted the formal proof in this reply. The prose around it is still model reasoning.">
+            LEAN CHECKED
+          </span>
+        ) : (
+          <span className="badge-unverified" title="Model reasoning. Nothing in this response has been checked by Lean or by you.">
+            NOT VERIFIED
+          </span>
+        )}
       </div>
 
       {message.reasoning && (
@@ -328,7 +368,7 @@ function AssistantMessage({
       )}
 
       {message.content ? (
-        prose && <Markdown text={prose} variant="ai" />
+        prose && <Markdown text={prose} variant="ai" codeFooter={streaming ? undefined : leanFooter} />
       ) : (
         streaming &&
         !message.reasoning && (

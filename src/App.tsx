@@ -11,6 +11,7 @@ import { MODE_LABELS } from "./lib/prompts";
 import { timeAgo } from "./lib/text";
 import type { ChatGptSession, Context, Doc, Mode, ModelRef, ProviderStatus, Settings } from "./lib/types";
 import { useCollaborator } from "./lib/useCollaborator";
+import { useLean } from "./lib/useLean";
 import { useUpdates } from "./lib/useUpdates";
 import { useWorkspace } from "./lib/useWorkspace";
 
@@ -58,6 +59,7 @@ export default function App() {
 
   const collab = useCollaborator(workspace, settings?.systemPrompt ?? "");
   const updates = useUpdates(workspace.flush);
+  const lean = useLean();
 
   const refreshModels = useCallback(async () => {
     setModelsLoading(true);
@@ -339,6 +341,7 @@ export default function App() {
             thread={thread}
             context={context}
             providers={providers}
+            lean={lean.status}
             modelsLoading={modelsLoading}
             model={selected}
             hasModel={hasModel}
@@ -371,6 +374,14 @@ export default function App() {
             onSelectModel={selectModel}
             onRefreshModels={() => void refreshModels()}
             onOpenSettings={() => setSettingsOpen(true)}
+            onLeanChecked={collab.recordLeanCheck}
+            onMarkVerified={(blockId) =>
+              updateDoc((d) => ({
+                ...d,
+                blocks: d.blocks.map((b) => (b.id === blockId ? { ...b, status: "verified", note: "checked in Lean" } : b)),
+              }))
+            }
+            onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null)}
           />
         ))}
 
@@ -389,6 +400,7 @@ export default function App() {
           settings={settings}
           chatgpt={chatgpt}
           updates={updates}
+          lean={lean}
           onChatgptChange={(session) => {
             setChatgpt(session);
             if (session.status !== "signingIn") void refreshModels();

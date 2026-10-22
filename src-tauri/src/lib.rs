@@ -1,5 +1,6 @@
 mod chatgpt;
 mod error;
+mod lean;
 mod providers;
 mod settings;
 mod storage;
@@ -15,6 +16,8 @@ use tokio_util::sync::CancellationToken;
 
 use chatgpt::{ChatGpt, Session};
 use error::{AppError, AppResult};
+use lean::check::CheckResult;
+use lean::{Lean, LeanStatus, SetupEvent};
 use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ollama};
 use settings::{SettingsStore, SettingsUpdate, SettingsView};
 use storage::{DocumentSummary, Project, Workspace, WorkspaceStore};
@@ -23,6 +26,7 @@ struct AppState {
     settings: SettingsStore,
     workspace: WorkspaceStore,
     chatgpt: ChatGpt,
+    lean: Lean,
     http: reqwest::Client,
     /// Cancellation handles for replies that are still streaming, keyed by request id.
     streams: Mutex<HashMap<String, CancellationToken>>,
@@ -160,6 +164,35 @@ fn chat_cancel(state: tauri::State<'_, AppState>, request_id: String) -> bool {
 }
 
 #[tauri::command]
+fn lean_status(state: tauri::State<'_, AppState>) -> LeanStatus {
+    state.lean.status()
+}
+
+/// Installs Lean and downloads Mathlib, reporting progress as it goes.
+#[tauri::command]
+async fn lean_setup(
+    state: tauri::State<'_, AppState>,
+    on_event: Channel<SetupEvent>,
+) -> AppResult<LeanStatus> {
+    state
+        .lean
+        .set_up(|event| {
+            let _ = on_event.send(event);
+        })
+        .await
+}
+
+#[tauri::command]
+fn lean_cancel_setup(state: tauri::State<'_, AppState>) -> bool {
+    state.lean.cancel_setup()
+}
+
+#[tauri::command]
+async fn lean_check(state: tauri::State<'_, AppState>, code: String) -> AppResult<CheckResult> {
+    state.lean.check(&code).await
+}
+
+#[tauri::command]
 async fn load_workspace(state: tauri::State<'_, AppState>) -> AppResult<Workspace> {
     state.workspace.load().await
 }
@@ -211,6 +244,7 @@ pub fn run() {
                 settings: SettingsStore::load(config_dir.join("settings.json")),
                 workspace: WorkspaceStore::new(data_dir.join("workspace")),
                 chatgpt: ChatGpt::new(vault)?,
+                lean: Lean::new(data_dir.join("lean"), app.path().home_dir()?, http.clone()),
                 http,
                 streams: Mutex::new(HashMap::new()),
             });
@@ -224,6 +258,10 @@ pub fn run() {
             chatgpt_sign_in,
             chatgpt_cancel_sign_in,
             chatgpt_sign_out,
+            lean_status,
+            lean_setup,
+            lean_cancel_setup,
+            lean_check,
             chat_stream,
             chat_cancel,
             load_workspace,

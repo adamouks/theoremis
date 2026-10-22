@@ -2,6 +2,9 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   ChatGptSession,
   ChatMessage,
+  LeanCheck,
+  LeanSetupEvent,
+  LeanStatus,
   Doc,
   DocumentSummary,
   Project,
@@ -63,6 +66,16 @@ export const api = {
     return outcome.value;
   },
   cancelChat: (requestId: string) => invoke<boolean>("chat_cancel", { requestId }),
+
+  leanStatus: () => invoke<LeanStatus>("lean_status"),
+  /** Installs Lean and downloads Mathlib; resolves with the new status when done. */
+  leanSetup: (onEvent: (event: LeanSetupEvent) => void) => {
+    const channel = new Channel<LeanSetupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<LeanStatus>("lean_setup", { onEvent: channel });
+  },
+  leanCancelSetup: () => invoke<boolean>("lean_cancel_setup"),
+  leanCheck: (code: string) => invoke<LeanCheck>("lean_check", { code }),
 
   loadWorkspace: () => invoke<Workspace>("load_workspace"),
   saveProjects: (projects: Project[]) => invoke<void>("save_projects", { projects }),

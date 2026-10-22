@@ -3,7 +3,7 @@ import { api, errorMessage } from "./api";
 import { splitProposals } from "./doc";
 import { buildMessages, DEFAULT_REQUESTS } from "./prompts";
 import { deriveTitle, newId } from "./text";
-import type { Block, Context, Doc, Mode, ModelRef, Thread, ThreadMessage } from "./types";
+import type { Block, Context, Doc, Mode, ModelRef, StoredLeanCheck, Thread, ThreadMessage } from "./types";
 import type { WorkspaceApi } from "./useWorkspace";
 
 function patchThread(doc: Doc, threadId: string, fn: (thread: Thread) => Thread): Doc {
@@ -248,9 +248,22 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
     [updateDoc],
   );
 
+  /** Keeps Lean's verdict with the reply it checked, replacing any earlier check of the same code. */
+  const recordLeanCheck = useCallback(
+    (threadId: string, messageId: string, check: StoredLeanCheck) =>
+      updateDoc((d) => {
+        const message = findMessage(d, threadId, messageId);
+        if (!message) return d;
+        const leanChecks = [...(message.leanChecks ?? []).filter((c) => c.code !== check.code), check];
+        return patchMessage(d, threadId, messageId, { leanChecks });
+      }, "meta"),
+    [updateDoc],
+  );
+
   return {
     streaming,
     send,
+    recordLeanCheck,
     retry,
     stop,
     acceptRevision,

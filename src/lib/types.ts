@@ -107,6 +107,8 @@ export interface ThreadMessage {
   insertedBlockId?: string;
   /** A rewrite of the selected block proposed in this reply, and what became of it. */
   revision?: Revision;
+  /** Lean's verdicts on the reply's Lean code, one per code block checked. */
+  leanChecks?: StoredLeanCheck[];
   createdAt: number;
 }
 
@@ -163,4 +165,52 @@ export interface DocumentSummary {
 export interface Workspace {
   projects: Project[];
   documents: DocumentSummary[];
+}
+
+// ---------------------------------------------------------------------------
+// Lean 4 and Mathlib
+
+export interface LeanStatus {
+  /** Lean's toolchain manager (elan) is installed. */
+  installed: boolean;
+  /** Mathlib is downloaded and formalizations can be checked. */
+  ready: boolean;
+  leanVersion: string | null;
+  /** The Mathlib commit, abbreviated. */
+  mathlibVersion: string | null;
+  settingUp: boolean;
+  projectPath: string;
+}
+
+export type LeanSetupEvent = { type: "step"; text: string } | { type: "line"; text: string };
+
+/** proved: every proof accepted, none resting on `sorry`. incomplete: compiles with `sorry`. */
+export type LeanOutcome = "proved" | "incomplete" | "failed";
+
+export interface LeanMessage {
+  severity: "error" | "warning" | "information";
+  line: number;
+  column: number;
+  endLine: number | null;
+  endColumn: number | null;
+  text: string;
+}
+
+export interface LeanTheorem {
+  name: string;
+  /** Axioms beyond propext, choice and quotient soundness, e.g. `Lean.ofReduceBool`. */
+  extraAxioms: string[];
+}
+
+export interface LeanCheck {
+  outcome: LeanOutcome;
+  messages: LeanMessage[];
+  theorems: LeanTheorem[];
+  seconds: number;
+}
+
+export interface StoredLeanCheck extends LeanCheck {
+  /** The code that was checked, so an edited reply isn't mistaken for a checked one. */
+  code: string;
+  checkedAt: number;
 }

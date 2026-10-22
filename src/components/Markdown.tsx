@@ -1,4 +1,4 @@
-import { memo, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, memo, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -25,8 +25,14 @@ function textOf(node: ReactNode): string {
   return "";
 }
 
+/** Extra content under a code block, e.g. Lean's verdict on Lean code. */
+export type CodeFooter = (language: string | undefined, code: string) => ReactNode;
+
+const CodeFooterContext = createContext<CodeFooter | undefined>(undefined);
+
 function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
   const [copied, setCopied] = useState(false);
+  const footer = useContext(CodeFooterContext);
   const child = Array.isArray(children) ? children[0] : children;
   const className =
     child && typeof child === "object" && "props" in child
@@ -52,6 +58,7 @@ function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
         </button>
       </div>
       <pre {...props}>{children}</pre>
+      {footer?.(language, textOf(children).replace(/\n$/, ""))}
     </div>
   );
 }
@@ -91,14 +98,17 @@ interface Props {
   variant?: "doc" | "ai" | "note" | "context" | "question" | "diff";
   /** Skip delimiter normalization when the caller already did it (e.g. numbered blocks). */
   normalized?: boolean;
+  codeFooter?: CodeFooter;
 }
 
-export const Markdown = memo(function Markdown({ text, variant = "doc", normalized = false }: Props) {
+export const Markdown = memo(function Markdown({ text, variant = "doc", normalized = false, codeFooter }: Props) {
   return (
     <div className={`markdown markdown--${variant}`}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-        {normalized ? text : variant === "doc" ? normalizeMath(text) : unnumberEnvironments(normalizeMath(text))}
-      </ReactMarkdown>
+      <CodeFooterContext.Provider value={codeFooter}>
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+          {normalized ? text : variant === "doc" ? normalizeMath(text) : unnumberEnvironments(normalizeMath(text))}
+        </ReactMarkdown>
+      </CodeFooterContext.Provider>
     </div>
   );
 });

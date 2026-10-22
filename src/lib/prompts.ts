@@ -27,7 +27,7 @@ const MODE_INSTRUCTIONS: Record<Mode, string> = {
   challenge:
     "Challenge the selected claim or step. Look for counterexamples, hidden assumptions and edge cases, and argue the other side as strongly as you honestly can.",
   formalize:
-    "Formalize the selected statement in Lean 4 with Mathlib. Give the theorem statement and a proof or proof sketch in a ```lean code block, and say what you could not formalize. Remember the code has not been checked by Lean.",
+    "Formalize the selected statement in Lean 4 with Mathlib. Write one complete file in a single ```lean code block: start with `import Mathlib`, state it as a named `theorem`, and prove it, using `sorry` only for steps you cannot prove and saying which. Use current Mathlib names. Don't use #eval, macros, new syntax or IO; Theoremis refuses to run files that do. The person can check the file with Lean and Mathlib from the reply, and may send back Lean's errors for you to fix; until then it is unchecked. After the code, say briefly what you could not formalize.",
 };
 
 const COLLABORATOR = `You are the Collaborator in Theoremis, a workspace where a mathematician develops proofs. You assist; the mathematician decides what enters the document.

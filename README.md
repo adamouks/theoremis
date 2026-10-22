@@ -20,6 +20,9 @@ installer from the [releases](https://github.com/adamouks/theoremis/releases/lat
 - **A collaborator in the margins.** Select a step and ask, or use **Explore**, **Find gaps**,
   **Challenge** or **Formalize** (Lean 4). The selection travels with the question, findings come
   back pinned to the line they concern, and every reply is marked _not verified_.
+- **Proofs checked by Lean.** **Formalize** writes the step in Lean 4 with Mathlib; **Check with
+  Lean** runs it against Mathlib on your computer. Errors go back to the collaborator in one click,
+  and a proof Lean accepts can mark the step _verified_.
 - **Nothing lands without consent.** Proposed rewrites appear as an original/proposed comparison
   you accept, edit or reject. New material comes in as a dashed suggestion until you accept it.
   Every change can be undone.
@@ -149,6 +152,26 @@ Theoremis talks to `http://127.0.0.1:11434` by default. It also honours `OLLAMA_
 can point it at another server in **Settings → Ollama → Server URL**. Reasoning models (Qwen 3,
 DeepSeek-R1) show their thinking in a collapsible section.
 
+## Lean 4 and Mathlib
+
+**Settings → Lean 4 & Mathlib → Set up** installs Lean with [elan](https://github.com/leanprover/elan)
+(unless it's already there) and creates a Mathlib project from Mathlib's own template, downloading
+its prebuilt library rather than compiling it: about 5 GB, and a few minutes on a good connection.
+Mathlib needs Git; on a Mac, `xcode-select --install` provides it.
+
+Then every Lean code block in a reply gets **Check with Lean**. Theoremis runs `lake env lean`
+on the file, asks Lean which axioms each theorem rests on, and reports one of:
+
+- **Lean accepted the proof**: no errors, and no theorem depends on `sorry`. Any axiom beyond
+  Mathlib's standard three (e.g. `Lean.ofReduceBool` from `native_decide`) is named. If the reply
+  was about a step in the document, **Mark … as verified** sets its status.
+- **Compiles, but uses sorry**, or **Lean found errors**, with Lean's messages and **Ask to fix**,
+  which sends them back to the collaborator.
+
+Lean files can run programs while they compile, so Theoremis refuses to check a file that uses
+`#eval`, `run_cmd`, custom elaborators, macros or new syntax, `IO`, `unsafe` code or imports from
+outside Mathlib and Lean's own libraries. Statements and proofs don't need any of these.
+
 ## Keyboard
 
 | Keys | Action |
@@ -171,6 +194,7 @@ On Windows and Linux use `Ctrl` for `⌘`.
 | ChatGPT sign-in | `chatgpt.json` in the app config directory, encrypted (AES-256-GCM) with a key in your system keychain |
 | Projects | `workspace/projects.json` in the app data directory |
 | Documents, with their collaborator threads | one JSON file each in `workspace/documents/` |
+| The Mathlib project | `lean/TheoremisMath` in the app data directory (Lean itself lives in `~/.elan`) |
 
 The directories follow each OS's conventions for the app id `app.theoremis.desktop`
 (e.g. `~/Library/Application Support/app.theoremis.desktop` on macOS,
@@ -213,6 +237,8 @@ src-tauri/src/
     oauth.rs                OIDC discovery, PKCE, loopback callback, token refresh, ID tokens
     vault.rs                Credentials encrypted with a key from the system keychain
     api.rs                  Model catalog and streaming Responses
+  lean/mod.rs               Installing Lean and Mathlib, running checks
+  lean/check.rs             What a file may run, its theorems, and reading Lean's verdict
   providers/ollama.rs       Ollama: /api/tags, streaming /api/chat (NDJSON)
   settings.rs               Settings persistence
   storage.rs                Projects and document files
@@ -236,6 +262,6 @@ CI runs both, and builds the site, on every push.
 ## Roadmap
 
 - More providers: OpenRouter, Poe
-- Checking formalizations with Lean
+- Updating Mathlib from inside the app
 - Cross-references that renumber as the document changes
 - Developer ID signing for macOS and Windows releases

@@ -2741,6 +2741,171 @@ a:hover {
   color: oklch(0.86 0.06 25);
 }
 
+/* Lean 4 and Mathlib ------------------------------------------------------------ */
+
+.lean-mark {
+  width: 14px;
+  display: inline-grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--paper-2);
+}
+
+.lean-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lean-setup__line {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-4);
+}
+
+.lean-check {
+  border-top: 1px solid var(--line-soft);
+  background: oklch(0.17 0.006 276);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.lean-check__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
+}
+
+.lean-check__status {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+}
+
+.lean-check__status strong {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.lean-check--proved .lean-check__status {
+  color: oklch(0.86 0.06 150);
+}
+
+.lean-check--proved .lean-check__status strong {
+  color: oklch(0.9 0.07 150);
+}
+
+.lean-check--failed .lean-check__status strong {
+  color: oklch(0.86 0.08 25);
+}
+
+.lean-check--incomplete .lean-check__status strong {
+  color: var(--amber-label);
+}
+
+.lean-check__meta,
+.lean-check__hint {
+  color: var(--text-4);
+}
+
+.lean-check__error {
+  margin: 0;
+  padding: 0 12px 9px;
+  color: oklch(0.86 0.06 25);
+  line-height: 1.5;
+}
+
+.lean-check__detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 12px 10px;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+
+.lean-check__detail p {
+  margin: 0;
+}
+
+.lean-check__detail code {
+  margin-right: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-strong);
+}
+
+.lean-check__done {
+  color: oklch(0.86 0.06 150);
+}
+
+.lean-check__messages {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lean-msg {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.lean-msg__where {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-4);
+}
+
+.lean-msg pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.lean-msg--error .lean-msg__where {
+  color: oklch(0.78 0.1 25);
+}
+
+.lean-msg--warning .lean-msg__where {
+  color: var(--amber);
+}
+
+.lean-check__more {
+  color: var(--text-4);
+}
+
+.badge-lean {
+  display: flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid oklch(0.7 0.08 150 / 0.6);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  color: oklch(0.88 0.07 150);
+  white-space: nowrap;
+}
+
 /* Sign in with ChatGPT -------------------------------------------------------- */
 
 .account {
