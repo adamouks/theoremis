@@ -2,18 +2,39 @@ import { useEffect, useState, type FormEvent } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "../lib/api";
 import type { ChatGptSession, Settings, SettingsUpdate } from "../lib/types";
+import type { Updates, UpdateStatus } from "../lib/useUpdates";
 import { ChatGptAccount } from "./ChatGptAccount";
 import { Close, OllamaMark, OpenAILogo } from "./Icons";
 
 interface Props {
   settings: Settings;
   chatgpt: ChatGptSession | null;
+  updates: Updates;
   onChatgptChange: (session: ChatGptSession) => void;
   onClose: () => void;
   onSaved: (settings: Settings) => void;
 }
 
-export function SettingsDialog({ settings, chatgpt, onChatgptChange, onClose, onSaved }: Props) {
+function updateLine(status: UpdateStatus): string {
+  switch (status.kind) {
+    case "checking":
+      return "Checking for updates…";
+    case "upToDate":
+      return "You have the latest version.";
+    case "downloading":
+      return `Downloading ${status.version}${status.percent === null ? "…" : ` · ${status.percent}%`}`;
+    case "ready":
+      return `Version ${status.version} is ready. Restart to finish updating.`;
+    case "installing":
+      return `Installing ${status.version}…`;
+    case "error":
+      return status.message;
+    default:
+      return "Updates download automatically from GitHub releases.";
+  }
+}
+
+export function SettingsDialog({ settings, chatgpt, updates, onChatgptChange, onClose, onSaved }: Props) {
   const [displayName, setDisplayName] = useState(settings.displayName);
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl);
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
@@ -113,6 +134,37 @@ export function SettingsDialog({ settings, chatgpt, onChatgptChange, onClose, on
               />
               <small>Added to every request, for every model.</small>
             </label>
+          </section>
+
+          <section className="settings-section">
+            <h3>
+              Updates
+              {updates.version && <span className="settings-section__tag">Version {updates.version}</span>}
+            </h3>
+            <div className="update-panel">
+              <p className={`update-panel__line${updates.status.kind === "error" ? " is-error" : ""}`}>
+                {updateLine(updates.status)}
+              </p>
+              {updates.status.kind === "ready" || updates.status.kind === "installing" ? (
+                <button
+                  type="button"
+                  className="button button--cream button--small"
+                  onClick={() => void updates.restart()}
+                  disabled={updates.status.kind === "installing"}
+                >
+                  Restart to update
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button button--ghost button--small"
+                  onClick={() => void updates.checkNow()}
+                  disabled={updates.status.kind === "checking" || updates.status.kind === "downloading"}
+                >
+                  Check for updates
+                </button>
+              )}
+            </div>
           </section>
 
           {error && (

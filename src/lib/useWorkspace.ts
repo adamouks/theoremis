@@ -293,6 +293,8 @@ export function useWorkspace() {
     summaries,
     doc,
     saveState,
+    /** Saves pending edits now; resolves once they're on disk. */
+    flush,
     openDocument,
     updateDoc,
     mutateDocument,

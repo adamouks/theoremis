@@ -11,6 +11,7 @@ import { MODE_LABELS } from "./lib/prompts";
 import { timeAgo } from "./lib/text";
 import type { ChatGptSession, Context, Doc, Mode, ModelRef, ProviderStatus, Settings } from "./lib/types";
 import { useCollaborator } from "./lib/useCollaborator";
+import { useUpdates } from "./lib/useUpdates";
 import { useWorkspace } from "./lib/useWorkspace";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -56,6 +57,7 @@ export default function App() {
   const [reveal, setReveal] = useState<{ blockId: string; edit: boolean; nonce: number } | null>(null);
 
   const collab = useCollaborator(workspace, settings?.systemPrompt ?? "");
+  const updates = useUpdates(workspace.flush);
 
   const refreshModels = useCallback(async () => {
     setModelsLoading(true);
@@ -294,6 +296,8 @@ export default function App() {
           onDeleteProject={(p) => void workspace.deleteProject(p.id)}
           onSearch={() => setPaletteOpen(true)}
           onSettings={() => setSettingsOpen(true)}
+          update={updates.status}
+          onRestartToUpdate={() => void updates.restart()}
         />
       )}
 
@@ -384,6 +388,7 @@ export default function App() {
         <SettingsDialog
           settings={settings}
           chatgpt={chatgpt}
+          updates={updates}
           onChatgptChange={(session) => {
             setChatgpt(session);
             if (session.status !== "signingIn") void refreshModels();

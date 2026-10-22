@@ -870,13 +870,38 @@ a:hover {
   color: var(--text-strong);
 }
 
-.sidebar__row span:not(.avatar, .dashed-plus) {
+.sidebar__row span:not(.avatar, .dashed-plus, .update-dot) {
   flex: 1;
   font-size: 12.5px;
 }
 
 .sidebar__row--user {
   height: 32px;
+}
+
+.sidebar__row--update {
+  color: var(--text-strong);
+}
+
+.sidebar__row--update:disabled {
+  opacity: 0.7;
+}
+
+.update-dot {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.update-dot::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .dashed-plus {
@@ -2695,6 +2720,25 @@ a:hover {
   font-size: 14px;
   line-height: 1.55;
   color: var(--text-3);
+}
+
+.update-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.update-panel__line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.update-panel__line.is-error {
+  color: oklch(0.86 0.06 25);
 }
 
 /* Sign in with ChatGPT -------------------------------------------------------- */

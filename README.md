@@ -61,13 +61,34 @@ npm run tauri build
 
 The installers end up in `src-tauri/target/release/bundle/`.
 
-### Publish a release
+### Releases and automatic updates
 
-Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`), then push a tag like `v0.2.0`
-or run the **Release** workflow from the Actions tab. It builds the macOS (Apple silicon and
-Intel), Windows and Linux installers, attaches them to a release, and publishes it once every
-platform has built. The landing page's Download buttons pick the right installer for each visitor
-from the latest release.
+There's nothing to do by hand: every push to `main` or `claude/epic-meitner-tnvutq` that passes CI
+and changes the app (anything under `src/`, `src-tauri/`, `public/` or the build config) becomes a
+release. The **Release** workflow builds the macOS (Apple silicon and Intel), Windows and Linux
+installers, attaches them with signed update bundles and a `latest.json`, and publishes the release
+once every platform has built. Changes to only the site or the docs don't make a release.
+
+Versions count up on their own: the major and minor come from `version` in
+`src-tauri/tauri.conf.json` and the patch is the workflow's run number (`0.1.12`, `0.1.13`, …).
+Raise the minor or major there when you want to mark a bigger step. You can also run the workflow
+from the Actions tab to release the current commit regardless of what changed.
+
+Installed copies of Theoremis check `latest.json` on the latest release a few seconds after launch
+and every six hours, download a newer version in the background, and show **Restart to update** in
+the sidebar (and in **Settings → Updates**). Updates are verified against the public key in
+`src-tauri/tauri.conf.json`, so they need the matching private key in the repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | the contents of the private key file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password, if it has one |
+
+Keep a copy of the private key somewhere safe: installed apps only accept updates signed with it.
+On Linux, the AppImage updates itself; `.deb` and `.rpm` installs update through a new download.
+
+The landing page's Download buttons pick the right installer for each visitor from the latest
+release.
 
 ### Signing the macOS app
 
@@ -95,7 +116,7 @@ To sign and notarize every release:
    | `APPLE_PASSWORD` | the app-specific password |
    | `APPLE_TEAM_ID` | your Team ID |
 
-5. Bump the version and run the **Release** workflow. The macOS builds are then signed, notarized
+5. Push a change (or run the **Release** workflow). The macOS builds are then signed, notarized
    and stapled, and open without a warning.
 
 Windows builds aren't signed yet either, so SmartScreen may ask once (**More info → Run anyway**).
@@ -217,4 +238,4 @@ CI runs both, and builds the site, on every push.
 - More providers: OpenRouter, Poe
 - Checking formalizations with Lean
 - Cross-references that renumber as the document changes
-- Signed, auto-updating releases
+- Developer ID signing for macOS and Windows releases

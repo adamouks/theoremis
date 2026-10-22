@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { initials } from "../lib/text";
 import type { DocumentSummary, Project } from "../lib/types";
+import type { UpdateStatus } from "../lib/useUpdates";
 import { ChevronDown, ChevronRight, Gear, Plus, Search, StatusGlyph, Trash } from "./Icons";
 import { STATUS_INFO } from "../lib/doc";
 
@@ -19,6 +20,8 @@ interface Props {
   onDeleteProject: (project: Project) => void;
   onSearch: () => void;
   onSettings: () => void;
+  update: UpdateStatus;
+  onRestartToUpdate: () => void;
 }
 
 export function Sidebar({
@@ -36,6 +39,8 @@ export function Sidebar({
   onDeleteProject,
   onSearch,
   onSettings,
+  update,
+  onRestartToUpdate,
 }: Props) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -186,6 +191,19 @@ export function Sidebar({
       </nav>
 
       <div className="sidebar__footer">
+        {(update.kind === "ready" || update.kind === "installing") && (
+          <button
+            type="button"
+            className="sidebar__row sidebar__row--update"
+            onClick={onRestartToUpdate}
+            disabled={update.kind === "installing"}
+            title={`Install Theoremis ${update.version} and restart`}
+          >
+            <span className="update-dot" aria-hidden="true" />
+            <span>{update.kind === "installing" ? "Updating…" : `Restart to update`}</span>
+            <kbd>{update.version}</kbd>
+          </button>
+        )}
         <button type="button" className="sidebar__row" onClick={() => onNewDocument()}>
           <span className="dashed-plus">
             <Plus size={10} />

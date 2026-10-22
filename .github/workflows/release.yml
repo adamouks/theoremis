@@ -1,11 +1,15 @@
 name: Release
 
-# Builds installers for macOS, Windows and Linux, attaches them to a GitHub release and
-# publishes it once every platform has built. Run it by pushing a tag like `v0.1.0`, or from
-# the Actions tab; either way it releases the version in src-tauri/tauri.conf.json.
+# Every push that passes CI and changes the app becomes a release: installers for macOS, Windows
+# and Linux, plus the signed update bundles and latest.json that installed copies of Theoremis
+# check for. The version is the major.minor from src-tauri/tauri.conf.json and this workflow's run
+# number as the patch, so each release is newer than the last. It can also be run by hand from
+# the Actions tab.
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main, claude/epic-meitner-tnvutq]
   workflow_dispatch:
 
 permissions:
@@ -16,39 +20,82 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # One draft for every build to attach to, so parallel builds can't each create their own.
+  # Decides whether this commit ships, and if so makes the one draft every build attaches to.
   create-release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.draft.outputs.result }}
+      release_id: ${{ steps.draft.outputs.release_id }}
+      version: ${{ steps.draft.outputs.version }}
+      sha: ${{ steps.draft.outputs.sha }}
+      notes: ${{ steps.draft.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: draft
         uses: actions/github-script@v7
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         with:
           script: |
             const fs = require("fs");
-            const { version } = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
-            const tag = `v${version}`;
+            const sha = process.env.SHA;
             const releases = await github.paginate(github.rest.repos.listReleases, context.repo);
-            const existing = releases.find((r) => r.tag_name === tag);
-            if (existing && !existing.draft) {
-              core.setFailed(`${tag} is already published. Bump the version in src-tauri/tauri.conf.json first.`);
+
+            // The same commit can arrive from more than one branch; release it once.
+            if (releases.some((r) => !r.draft && r.target_commitish === sha)) {
+              core.notice(`${sha.slice(0, 7)} is already released.`);
               return;
             }
-            if (existing) return existing.id;
-            const { data } = await github.rest.repos.createRelease({
-              ...context.repo,
-              tag_name: tag,
-              target_commitish: context.sha,
-              name: `Theoremis ${tag}`,
-              body: fs.readFileSync(".github/release-notes.md", "utf8"),
-              draft: true,
-            });
-            return data.id;
+
+            // Only changes to the app itself are worth an update; the site and docs ship elsewhere.
+            const app = /^(src\/|src-tauri\/|public\/|index\.html$|package(-lock)?\.json$|vite\.config\.ts$|tsconfig[^/]*\.json$)/;
+            const previous = releases.find((r) => !r.draft && !r.prerelease);
+            let changes = [];
+            if (previous) {
+              try {
+                const { data } = await github.rest.repos.compareCommits({ ...context.repo, base: previous.target_commitish, head: sha });
+                const files = data.files ?? [];
+                if (process.env.MANUAL !== "true" && files.length < 300 && !files.some((f) => app.test(f.filename))) {
+                  core.notice(`No app changes since ${previous.tag_name}.`);
+                  return;
+                }
+                changes = data.commits.map((c) => c.commit.message.split("\n")[0]).reverse().slice(0, 20);
+              } catch (error) {
+                core.warning(`Couldn't compare with ${previous.tag_name}: ${error.message}`);
+              }
+            }
+
+            const { version: configured } = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+            const [major, minor] = configured.split(".");
+            const version = `${major}.${minor}.${context.runNumber}`;
+            const tag = `v${version}`;
+            let release = releases.find((r) => r.tag_name === tag);
+            if (release && !release.draft) {
+              core.setFailed(`${tag} is already published.`);
+              return;
+            }
+            if (!release) {
+              const whatsNew = changes.length ? `## What's new\n\n${changes.map((c) => `- ${c}`).join("\n")}\n\n` : "";
+              ({ data: release } = await github.rest.repos.createRelease({
+                ...context.repo,
+                tag_name: tag,
+                target_commitish: sha,
+                name: `Theoremis ${tag}`,
+                body: whatsNew + fs.readFileSync(".github/release-notes.md", "utf8"),
+                draft: true,
+              }));
+            }
+            core.setOutput("release_id", String(release.id));
+            core.setOutput("version", version);
+            core.setOutput("sha", sha);
+            core.setOutput("notes", changes.map((c) => `- ${c}`).join("\n"));
 
   build:
     needs: create-release
+    if: needs.create-release.outputs.release_id != ''
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +111,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.sha }}
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -80,6 +129,24 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
+      - name: Set the version and the update bundles
+        shell: bash
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = "src-tauri/tauri.conf.json";
+            const config = JSON.parse(fs.readFileSync(file, "utf8"));
+            config.version = process.env.VERSION;
+            // Update bundles are signed with the private key; without it the release still builds.
+            if (process.env.UPDATER_KEY) config.bundle.createUpdaterArtifacts = true;
+            fs.writeFileSync(file, JSON.stringify(config, null, 2));
+          '
+          if [ -z "$UPDATER_KEY" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY isn't in the repository secrets, so installed apps won't update to this release."
+          fi
       # With a Developer ID certificate in the repository secrets, the app is signed and
       # notarized so macOS opens it without a warning. Without one it's ad-hoc signed
       # (bundle.macOS.signingIdentity "-") and Gatekeeper asks on first launch.
@@ -114,22 +181,70 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
+          # latest.json is written once, below, from every platform's signature.
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
 
-  # Published only once every installer is attached, so the site's download links never point
-  # at a half-finished release.
+  # Writes latest.json and publishes the release once every installer is attached, so neither
+  # the site's download links nor installed apps ever see a half-finished release.
   publish:
     needs: [create-release, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          NOTES: ${{ needs.create-release.outputs.notes }}
         with:
           script: |
-            await github.rest.repos.updateRelease({
-              ...context.repo,
-              release_id: Number("${{ needs.create-release.outputs.release_id }}"),
-              draft: false,
-              make_latest: "true",
-            });
+            const release_id = Number(process.env.RELEASE_ID);
+            const version = process.env.VERSION;
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, { ...context.repo, release_id });
+
+            // Each update platform installs one bundle, signed in a .sig file beside it.
+            const bundles = {
+              "darwin-aarch64": /_aarch64\.app\.tar\.gz$/,
+              "darwin-x86_64": /_x64\.app\.tar\.gz$/,
+              "linux-x86_64": /\.AppImage$/,
+              "windows-x86_64": /-setup\.exe$/,
+            };
+            const platforms = {};
+            for (const [platform, pattern] of Object.entries(bundles)) {
+              const bundle = assets.find((a) => pattern.test(a.name));
+              const signature = bundle && assets.find((a) => a.name === `${bundle.name}.sig`);
+              if (!signature) continue;
+              const { data } = await github.rest.repos.getReleaseAsset({
+                ...context.repo,
+                asset_id: signature.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              platforms[platform] = {
+                signature: Buffer.from(data).toString("utf8").trim(),
+                // Drafts have provisional download URLs; these are the ones the tag will have.
+                url: `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/v${version}/${encodeURIComponent(bundle.name)}`,
+              };
+            }
+
+            if (Object.keys(platforms).length === 0) {
+              core.warning("No signed update bundles, so installed apps won't update to this release. Add TAURI_SIGNING_PRIVATE_KEY to the repository secrets.");
+            } else {
+              for (const old of assets.filter((a) => a.name === "latest.json")) {
+                await github.rest.repos.deleteReleaseAsset({ ...context.repo, asset_id: old.id });
+              }
+              const notes = process.env.NOTES || `Theoremis ${version}`;
+              const manifest = { version, notes, pub_date: new Date().toISOString(), platforms };
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo,
+                release_id,
+                name: "latest.json",
+                data: JSON.stringify(manifest, null, 2),
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            await github.rest.repos.updateRelease({ ...context.repo, release_id, draft: false, make_latest: "true" });
