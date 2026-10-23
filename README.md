@@ -281,3 +281,7 @@ CI runs all three on every push.
 - Updating Mathlib from inside the app
 - Cross-references that renumber as the document changes
 - Developer ID signing for macOS and Windows releases
+
+## License
+
+Theoremis is free and open source under the [MIT License](LICENSE).
