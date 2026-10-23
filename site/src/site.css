@@ -216,6 +216,19 @@ input::placeholder {
   }
 }
 
+/* The macOS, Windows and Linux logos beside "Works across all platforms". */
+.platforms__logos {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.platforms__logos svg,
+.download-os {
+  display: block;
+  flex: none;
+}
+
 /* On phones the hero buttons need to be able to wrap. */
 @media (max-width: 560px) {
   .hero-actions {

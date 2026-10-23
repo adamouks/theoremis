@@ -19,6 +19,14 @@ const LABELS: Record<Target, string> = {
   linux: "Linux",
 };
 
+/** The logo symbols in index.html's sprite. */
+const LOGOS: Record<Target, string> = {
+  "mac-arm": "logo-apple",
+  "mac-intel": "logo-apple",
+  windows: "logo-windows",
+  linux: "logo-linux",
+};
+
 /** Installer names produced by the release workflow, most preferred first. */
 const INSTALLERS: Record<Target, RegExp[]> = {
   "mac-arm": [/_aarch64\.dmg$/i],
@@ -66,6 +74,20 @@ async function isIntelMac(data: UAData | undefined): Promise<boolean> {
   return false;
 }
 
+function logo(target: Target): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "download-os");
+  svg.setAttribute("width", "15");
+  svg.setAttribute("height", "15");
+  svg.setAttribute("fill", "currentColor");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(ns, "use");
+  use.setAttribute("href", `#${LOGOS[target]}`);
+  svg.append(use);
+  return svg;
+}
+
 export async function setUpDownloads() {
   const links = document.querySelectorAll<HTMLAnchorElement>("[data-download]");
   if (links.length === 0) return;
@@ -92,7 +114,9 @@ export async function setUpDownloads() {
     link.removeAttribute("target");
     link.title = asset.name;
     const label = link.querySelector("[data-download-label]");
-    if (label) label.textContent = `Download for ${LABELS[target]}`;
+    if (!label) continue;
+    label.textContent = `Download for ${LABELS[target]}`;
+    label.before(logo(target));
   }
   for (const el of document.querySelectorAll<HTMLElement>("[data-download-other]")) el.hidden = false;
 }
