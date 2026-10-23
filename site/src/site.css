@@ -229,3 +229,15 @@ input::placeholder {
     animation: none;
   }
 }
+
+/* On phones the header keeps the wordmark, the beta tag and Download; GitHub is in the hero. */
+@media (max-width: 520px) {
+  .header-github {
+    display: none !important;
+  }
+
+  /* Too narrow for even one link; the nav keeps its space so Download stays on the right. */
+  header nav {
+    visibility: hidden;
+  }
+}
