@@ -5,7 +5,6 @@ import { exampleWorkspace } from "./seed";
 import { newId } from "./text";
 import type { Doc, DocumentSummary, Project, Workspace } from "./types";
 
-const SEEDED_KEY = "theoremis.seeded";
 const LAST_DOC_KEY = "theoremis.lastDocument";
 const SAVE_DELAY = 600;
 
@@ -27,20 +26,9 @@ function storageSet(key: string, value: string) {
 
 let initialLoad: Promise<Workspace> | null = null;
 
-/**
- * Loads the workspace, creating the example project on the very first launch. Shared, so
- * React's double-mounting in development can't seed twice.
- */
+/** Loads the workspace once, so React's double-mounting in development can't load it twice. */
 function loadInitialWorkspace(): Promise<Workspace> {
-  initialLoad ??= (async () => {
-    const ws = await api.loadWorkspace();
-    if (ws.projects.length > 0 || ws.documents.length > 0 || storageGet(SEEDED_KEY)) return ws;
-    const example = exampleWorkspace();
-    await api.saveProjects([example.project]);
-    for (const d of example.documents) await api.saveDocument(d);
-    storageSet(SEEDED_KEY, "1");
-    return api.loadWorkspace();
-  })();
+  initialLoad ??= api.loadWorkspace();
   return initialLoad;
 }
 
@@ -269,6 +257,14 @@ export function useWorkspace() {
     [createProject, updateProject, recordSummary, enqueue, openDocument],
   );
 
+  /** Adds the example project, "Figurate numbers", and opens its first document. */
+  const addExample = useCallback(async () => {
+    const example = exampleWorkspace();
+    await writeProjects([...projectsRef.current, example.project]);
+    for (const d of example.documents) recordSummary(await enqueue(() => api.saveDocument(d)));
+    await openDocument(example.documents[0].id);
+  }, [writeProjects, recordSummary, enqueue, openDocument]);
+
   const deleteDocument = useCallback(
     async (id: string) => {
       if (current.current?.id === id) {
@@ -302,6 +298,7 @@ export function useWorkspace() {
     updateProject,
     deleteProject,
     createDocument: createDocumentIn,
+    addExample,
     deleteDocument,
   };
 }

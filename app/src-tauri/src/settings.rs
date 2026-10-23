@@ -25,6 +25,8 @@ pub struct StoredSettings {
     pub system_prompt: String,
     pub display_name: String,
     pub last_model: Option<ModelRef>,
+    /// The first-run introduction has been completed (or skipped).
+    pub onboarded: bool,
 }
 
 /// The settings as the frontend sees them.
@@ -36,6 +38,7 @@ pub struct SettingsView {
     pub system_prompt: String,
     pub display_name: String,
     pub last_model: Option<ModelRef>,
+    pub onboarded: bool,
 }
 
 /// A partial update. `None` leaves a field untouched.
@@ -46,6 +49,7 @@ pub struct SettingsUpdate {
     pub system_prompt: Option<String>,
     pub display_name: Option<String>,
     pub last_model: Option<ModelRef>,
+    pub onboarded: Option<bool>,
 }
 
 pub struct SettingsStore {
@@ -128,6 +132,9 @@ fn apply_update(settings: &mut StoredSettings, update: SettingsUpdate) -> AppRes
     if update.last_model.is_some() {
         settings.last_model = update.last_model;
     }
+    if let Some(onboarded) = update.onboarded {
+        settings.onboarded = onboarded;
+    }
     Ok(())
 }
 
@@ -152,6 +159,7 @@ fn view_of(settings: &StoredSettings, env: &EnvVars) -> SettingsView {
         system_prompt: settings.system_prompt.clone(),
         display_name: settings.display_name.clone(),
         last_model: settings.last_model.clone(),
+        onboarded: settings.onboarded,
     }
 }
 
@@ -276,6 +284,8 @@ mod tests {
         .unwrap();
         assert_eq!(stored.system_prompt, "Be rigorous.");
         assert_eq!(stored.last_model.unwrap().provider, Provider::Chatgpt);
+        // People upgrading from a build without the introduction see it once.
+        assert!(!stored.onboarded);
         let saved = serde_json::to_string(&StoredSettings::default()).unwrap();
         assert!(!saved.contains("openaiApiKey"));
     }
@@ -288,12 +298,14 @@ mod tests {
         store
             .update(SettingsUpdate {
                 system_prompt: Some("Be rigorous.".into()),
+                onboarded: Some(true),
                 ..Default::default()
             })
             .unwrap();
 
         let reloaded = SettingsStore::load(path.clone());
         assert_eq!(reloaded.snapshot().system_prompt, "Be rigorous.");
+        assert!(reloaded.view().onboarded);
 
         #[cfg(unix)]
         {

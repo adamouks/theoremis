@@ -5,6 +5,9 @@ with an AI collaborator that works inside your document. A desktop app built wit
 [Tauri](https://tauri.app); the collaborator runs on your ChatGPT plan (Sign in with ChatGPT) or
 on [Ollama](https://ollama.com) models on your machine.
 
+> **Theoremis is in beta.** ChatGPT, Ollama and the Lean 4 checking all work, but they're early:
+> expect changes between versions, and keep copies of anything important.
+
 **[Download Theoremis](https://theoremis.com)** for macOS, Windows or Linux, or grab an
 installer from the [releases](https://github.com/adamouks/theoremis/releases/latest).
 
@@ -62,7 +65,9 @@ npm install
 npm run tauri dev
 ```
 
-The first launch opens an example project, _Figurate numbers_, to try the tools on.
+The first launch opens a short introduction: what beta means, connecting ChatGPT or Ollama,
+setting up Lean 4, and then the example project (_Figurate numbers_) or a blank page. The example
+can be added again from the command palette (`⌘K`, **Add the example project**).
 
 ### Build an installer
 

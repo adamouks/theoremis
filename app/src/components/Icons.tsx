@@ -173,12 +173,7 @@ export function OpenAILogo({ size = 13 }: { size?: number }) {
   return <img src="/logos/openai.svg" alt="" width={size} height={size} className="provider-logo" />;
 }
 
-/** A plain mark for local Ollama models. */
+/** Ollama's logo, for local Ollama models. */
 export function OllamaMark({ size = 13 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden="true" className="provider-logo">
-      <rect x="2" y="2" width="10" height="10" rx="3" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <circle cx="7" cy="7" r="1.6" fill="currentColor" />
-    </svg>
-  );
+  return <img src="/logos/ollama.svg" alt="" width={size} height={size} className="provider-logo" />;
 }

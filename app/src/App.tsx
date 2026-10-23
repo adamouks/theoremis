@@ -5,6 +5,7 @@ import { CommandPalette, type Command } from "./components/CommandPalette";
 import { DocumentView } from "./components/DocumentView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
+import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { api, errorMessage } from "./lib/api";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { MODE_LABELS } from "./lib/prompts";
@@ -97,6 +98,23 @@ export default function App() {
   }, [settings, modelsLoading, available, selected]);
 
   const hasModel = selected !== null && available.some((m) => sameModel(m, selected));
+
+  const changeChatgpt = useCallback(
+    (session: ChatGptSession) => {
+      setChatgpt(session);
+      if (session.status !== "signingIn") void refreshModels();
+    },
+    [refreshModels],
+  );
+
+  // The introduction runs until it's finished once, and the workspace waits behind it.
+  const onboarding = !!settings && !settings.onboarded;
+
+  const finishWelcome = async (choice: WelcomeChoice, displayName: string) => {
+    if (choice === "example") await workspace.addExample();
+    else if (choice === "blank") await workspace.createDocument();
+    setSettings(await api.updateSettings({ onboarded: true, displayName }));
+  };
 
   const selectModel = (model: ModelRef) => {
     setSelected(model);
@@ -210,6 +228,7 @@ export default function App() {
   // Global shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (onboarding) return;
       const mod = e.metaKey || e.ctrlKey;
       const field = inTextField(e.target);
       if (mod && e.key.toLowerCase() === "k") {
@@ -246,7 +265,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [newDocument, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen]);
+  }, [onboarding, newDocument, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen]);
 
   const commands: Command[] = [
     { id: "new-doc", label: "New document", hint: shortcut("N"), run: () => newDocument() },
@@ -255,6 +274,7 @@ export default function App() {
       label: "New project",
       run: () => void workspace.createProject("Untitled project"),
     },
+    { id: "example", label: "Add the example project", run: () => void workspace.addExample() },
     { id: "tex", label: texMode ? "Show rendered document" : "Show TeX source", run: () => setTexMode((t) => !t) },
     { id: "focus", label: focus ? "Exit focus mode" : "Focus mode", hint: shortcut("."), run: () => setFocus((f) => !f) },
     {
@@ -272,6 +292,25 @@ export default function App() {
         <h1>Theoremis couldn’t start</h1>
         <p>{startupError ?? workspace.loadError}</p>
       </div>
+    );
+  }
+
+  // Settings say whether to show the introduction; until they and the workspace are read, show nothing.
+  if (!settings || !workspace.loaded) return <div className="app" data-tauri-drag-region />;
+
+  if (onboarding) {
+    return (
+      <Welcome
+        displayName={settings.displayName}
+        hasDocuments={workspace.summaries.length > 0}
+        providers={providers}
+        modelsLoading={modelsLoading}
+        chatgpt={chatgpt}
+        lean={lean}
+        onChatgptChange={changeChatgpt}
+        onRefreshModels={() => void refreshModels()}
+        onFinish={finishWelcome}
+      />
     );
   }
 
@@ -401,10 +440,7 @@ export default function App() {
           chatgpt={chatgpt}
           updates={updates}
           lean={lean}
-          onChatgptChange={(session) => {
-            setChatgpt(session);
-            if (session.status !== "signingIn") void refreshModels();
-          }}
+          onChatgptChange={changeChatgpt}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => {
             setSettings(next);

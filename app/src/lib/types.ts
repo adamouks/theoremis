@@ -29,6 +29,8 @@ export interface Settings {
   systemPrompt: string;
   displayName: string;
   lastModel: ModelRef | null;
+  /** The first-run introduction has been completed (or skipped). */
+  onboarded: boolean;
 }
 
 export interface SettingsUpdate {
@@ -36,6 +38,7 @@ export interface SettingsUpdate {
   systemPrompt?: string;
   displayName?: string;
   lastModel?: ModelRef;
+  onboarded?: boolean;
 }
 
 export interface ChatMessage {
