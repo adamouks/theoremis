@@ -80,8 +80,8 @@ The installers end up in `app/src-tauri/target/release/bundle/`.
 
 ### Releases and automatic updates
 
-There's nothing to do by hand: every push to `main` or `claude/epic-meitner-tnvutq` that passes CI
-and changes the app (anything under `app/`) becomes a release. The **Release** workflow builds the macOS (Apple silicon and Intel), Windows and Linux
+There's nothing to do by hand: every push to `main` that passes CI and changes the app (anything
+under `app/`) becomes a release. The **Release** workflow builds the macOS (Apple silicon and Intel), Windows and Linux
 installers, attaches them with signed update bundles and a `latest.json`, and publishes the release
 once every platform has built. Changes to only the site or the docs don't make a release.
 

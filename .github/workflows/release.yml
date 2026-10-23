@@ -9,7 +9,7 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main, claude/epic-meitner-tnvutq]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
