@@ -14,3 +14,7 @@ If your computer asks before opening Theoremis the first time:
 - **Linux:** make the AppImage executable with `chmod +x Theoremis_*.AppImage`.
 
 Then sign in with ChatGPT in Settings to use your plan, or point Theoremis at a local Ollama server.
+
+**Theoremis is in beta.** ChatGPT, Ollama and Lean 4 checking all work, but they're early: expect
+changes between versions, and keep copies of anything important. Problems and ideas are welcome as
+[issues](https://github.com/adamouks/theoremis/issues).
