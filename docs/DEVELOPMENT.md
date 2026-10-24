@@ -1,0 +1,145 @@
+# Developing Theoremis
+
+This document is for contributors and developers who want to run, inspect, or modify Theoremis. For a product overview, see the [main README](../README.md). For distribution and code signing, see [RELEASING.md](RELEASING.md).
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Tauri desktop application |
+| `app/src/` | React + TypeScript interface (Vite) |
+| `app/src-tauri/` | Rust backend: authentication, model providers, Lean, settings, storage |
+| `site/` | Static marketing and download site at [theoremis.com](https://theoremis.com) |
+| `docs/` | Screenshots and project documentation |
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org) 20+
+- Stable [Rust](https://www.rust-lang.org/tools/install)
+- [Tauri system dependencies](https://tauri.app/start/prerequisites/) for your OS
+
+On Debian or Ubuntu:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+## Run the desktop application
+
+```sh
+cd app
+npm install
+npm run tauri dev
+```
+
+The first launch offers a beta introduction, connection to ChatGPT or Ollama, Lean 4 setup, and an example project (*Figurate numbers*) or a blank page. The example can also be added later from the command palette (`⌘K` → **Add the example project**).
+
+To build local installers:
+
+```sh
+cd app
+npm run tauri build
+```
+
+Build artifacts are placed under `app/src-tauri/target/release/bundle/`. See [RELEASING.md](RELEASING.md) for published releases, updates, and operating-system signing.
+
+## Architecture
+
+```text
+app/src/                      React + TypeScript interface
+  components/                 Sidebar, document, blocks, collaborator, settings, palette
+  lib/doc.ts                  Statuses, equation numbering, block labels, proposals
+  lib/prompts.ts              Collaborator modes and requests to the model
+  lib/useWorkspace.ts         Projects, documents, autosave
+  lib/useCollaborator.ts      Thread streaming, revisions, suggestions
+app/src-tauri/src/            Rust backend
+  lib.rs                      Tauri commands and application state
+  chatgpt/
+    oauth.rs                  OIDC discovery, PKCE, callback, refresh, ID-token handling
+    vault.rs                  Encrypted credentials backed by the OS keychain
+    api.rs                    Model catalog and streaming Responses
+  lean/mod.rs                 Lean/Mathlib setup and checks
+  lean/check.rs               Input screening, theorem/axiom inspection, verdict parsing
+  providers/ollama.rs         Ollama tags and streamed chat
+  settings.rs                 Settings persistence
+  storage.rs                  Project/document files
+```
+
+Desktop-app network requests run in the Rust backend, keeping credentials out of the webview and avoiding browser CORS restrictions. Model output streams to React over a Tauri channel; cancellation drops the underlying HTTP request.
+
+### ChatGPT connection
+
+In **Settings → ChatGPT**, select **Sign in with ChatGPT**. The app uses OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc) flow with OAuth/PKCE, a loopback callback on `127.0.0.1`, ID-token validation against published keys, and background token refresh. The Rust backend sends requests to the Responses API with `store: false` and keeps credentials encrypted using AES-256-GCM with a key held in the OS keychain (Keychain, Credential Manager, or Secret Service). The app does not need an API key embedded in its source.
+
+Using a remote model means relevant prompts and selected document context leave your machine. Local document storage does not mean all model processing is offline. Review the selected provider and its policies before sending sensitive material.
+
+### Ollama connection
+
+Install [Ollama](https://ollama.com/download) and pull a model, for example:
+
+```sh
+ollama pull qwen3:8b
+```
+
+The default endpoint is `http://127.0.0.1:11434`; `OLLAMA_HOST` and **Settings → Ollama → Server URL** can change it. Local Ollama processing stays on your machine when the configured server is local. Qwen 3 and DeepSeek-R1 reasoning output can appear in a collapsible section.
+
+### Lean 4 and Mathlib
+
+Choose **Settings → Lean 4 & Mathlib → Set up**. The app installs Lean with [elan](https://github.com/leanprover/elan) if needed, then creates a Mathlib project from the Mathlib template and downloads prebuilt libraries. Plan for roughly **5 GB** of disk space. Git is required; on macOS, `xcode-select --install` can provide it.
+
+For a code block proposed by **Formalize**, **Check with Lean** runs `lake env lean` and inspects theorem axioms. Results distinguish:
+
+- **Accepted proof:** No Lean errors, no `sorry` dependency. Axioms beyond the standard Mathlib ones are reported.
+- **Compiles but uses `sorry`:** Incomplete proof; it is not marked verified.
+- **Lean errors:** Diagnostics can be returned to the collaborator with **Ask to fix**.
+
+The check refuses code involving `#eval`, `run_cmd`, custom elaborators/macros/syntax, `IO`, `unsafe`, or imports outside Lean/Mathlib. **These filters are a precaution, not a general-purpose sandbox or a guarantee that arbitrary input is safe to execute.** Running a Lean toolchain still executes software on your machine.
+
+AI-generated reasoning is always labeled *not verified* until a separately checked proof meets the app's verification criteria.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘K` | Search documents and commands |
+| `⌘N` | New document |
+| `⌘L` | Ask about the selected step |
+| `⌘.` or `Esc` | Focus mode |
+| `⌘\` | Toggle collaborator |
+| `⌘↵` | Accept suggestion / new writing paragraph |
+| `⌘,` | Settings |
+
+Use `Ctrl` in place of `⌘` on Windows and Linux.
+
+## Where local data lives
+
+| Data | Location |
+| --- | --- |
+| Settings | `settings.json` in app config |
+| ChatGPT sign-in | Encrypted `chatgpt.json` in app config; key in system keychain |
+| Projects | `workspace/projects.json` in app data |
+| Documents and threads | Individual JSON files in `workspace/documents/` |
+| Mathlib project | `lean/TheoremisMath` in app data (`~/.elan` for Lean) |
+
+The app ID is `app.theoremis.desktop`. Typical base directories: `~/Library/Application Support/app.theoremis.desktop` on macOS; `~/.config/app.theoremis.desktop` and `~/.local/share/app.theoremis.desktop` on Linux; `%APPDATA%\app.theoremis.desktop` on Windows.
+
+## Run the website
+
+```sh
+cd site
+npm install
+npm run dev      # http://localhost:1430
+npm run build    # site/dist
+```
+
+The static site is hosted on Vercel. The repository's `vercel.json` builds `site/`; pushes to `main` redeploy the site. The design includes `site/src/hover.css`, `site/src/main.ts`, and `site/src/download.ts`. Download links choose installers from the latest GitHub release. To activate the email updates form, set `VITE_UPDATES_ENDPOINT` to a suitable form endpoint; without it, the form links to releases.
+
+## Quality checks
+
+```sh
+cd app && npm run typecheck && npm test
+cd app/src-tauri && cargo clippy --all-targets && cargo test
+cd site && npm run build
+```
+
+CI runs the application and site checks on pushes. See `.github/workflows/ci.yml` and `.github/workflows/release.yml` for their source definitions.
