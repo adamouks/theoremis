@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type MarginNote, type Pin } from "./components/Block";
 import { Collaborator, CollaboratorRail } from "./components/Collaborator";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { DocumentView } from "./components/DocumentView";
+import { DropOverlay } from "./components/DropOverlay";
+import { ImportBanner } from "./components/ImportBanner";
+import { ImportDialog } from "./components/ImportDialog";
+import { MediaContext } from "./components/Markdown";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
+import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { api, errorMessage } from "./lib/api";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { MODE_LABELS } from "./lib/prompts";
+import { ACCEPTED_FILES } from "./lib/sources";
 import { timeAgo } from "./lib/text";
-import type { ChatGptSession, Context, Doc, Mode, ModelRef, ProviderStatus, Settings } from "./lib/types";
+import { readsImages, type ChatGptSession, type Context, type Doc, type Mode, type ModelRef, type ProviderStatus, type Settings } from "./lib/types";
 import { useCollaborator } from "./lib/useCollaborator";
+import { useImport } from "./lib/useImport";
 import { useLean } from "./lib/useLean";
 import { useUpdates } from "./lib/useUpdates";
 import { useWorkspace } from "./lib/useWorkspace";
@@ -58,7 +65,26 @@ export default function App() {
   const [composerFocus, setComposerFocus] = useState(0);
   const [reveal, setReveal] = useState<{ blockId: string; edit: boolean; nonce: number } | null>(null);
 
-  const collab = useCollaborator(workspace, settings?.systemPrompt ?? "");
+  const infoOf = useCallback(
+    (model: ModelRef | null) => providers.flatMap((p) => p.models).find((m) => model && m.provider === model.provider && m.id === model.model),
+    [providers],
+  );
+  const collab = useCollaborator(workspace, settings?.systemPrompt ?? "", (model) => readsImages(infoOf(model)));
+  const importer = useImport(workspace);
+  const [importing, setImporting] = useState<{ files: File[]; target: "new" | "append" } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [composerDrop, setComposerDrop] = useState<{ files: File[]; nonce: number } | null>(null);
+  // The paragraph open for editing when a drag began, which can take dropped images.
+  const dropEditor = useRef<HTMLTextAreaElement | null>(null);
+  const [viewer, setViewer] = useState<number | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const pickTarget = useRef<"new" | "append">("new");
+
+  const pickFiles = useCallback((target: "new" | "append") => {
+    pickTarget.current = target;
+    fileInput.current?.click();
+  }, []);
   const updates = useUpdates(workspace.flush);
   const lean = useLean();
 
@@ -98,6 +124,7 @@ export default function App() {
   }, [settings, modelsLoading, available, selected]);
 
   const hasModel = selected !== null && available.some((m) => sameModel(m, selected));
+  const selectedVision = readsImages(infoOf(selected));
 
   const changeChatgpt = useCallback(
     (session: ChatGptSession) => {
@@ -121,8 +148,38 @@ export default function App() {
     api.updateSettings({ lastModel: model }).then(setSettings, console.error);
   };
 
-  // A selection belongs to the document it came from.
-  useEffect(() => setContext(null), [doc?.id]);
+  // A selection belongs to the document it came from, and so does a view of its original.
+  useEffect(() => {
+    setContext(null);
+    setViewer(null);
+  }, [doc?.id]);
+
+  // Files dragged over the window can be dropped to import them.
+  useEffect(() => {
+    if (onboarding) return;
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    const onEnter = (e: DragEvent) => {
+      if (hasFiles(e)) {
+        e.preventDefault();
+        const active = document.activeElement;
+        dropEditor.current = active instanceof HTMLTextAreaElement && active.matches(".block__source") ? active : null;
+        setDragging(true);
+      }
+    };
+    const onOver = (e: DragEvent) => hasFiles(e) && e.preventDefault();
+    const onDrop = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+      setDragging(false);
+    };
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [onboarding]);
 
   const numbered = useMemo(() => (doc ? numberBlocks(doc.blocks) : []), [doc]);
   const thread = doc?.threads.find((t) => t.id === doc.activeThreadId) ?? null;
@@ -240,6 +297,9 @@ export default function App() {
       } else if (mod && !e.shiftKey && e.key.toLowerCase() === "n") {
         e.preventDefault();
         newDocument();
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        pickFiles("new");
       } else if (mod && e.key === ".") {
         e.preventDefault();
         setFocus((f) => !f);
@@ -265,7 +325,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onboarding, newDocument, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen]);
+  }, [onboarding, newDocument, pickFiles, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen]);
 
   const commands: Command[] = [
     { id: "new-doc", label: "New document", hint: shortcut("N"), run: () => newDocument() },
@@ -274,6 +334,8 @@ export default function App() {
       label: "New project",
       run: () => void workspace.createProject("Untitled project"),
     },
+    { id: "import", label: "Import a paper, notes or file…", hint: shortcut("O"), run: () => pickFiles("new") },
+    ...(doc ? [{ id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") }] : []),
     { id: "example", label: "Add the example project", run: () => void workspace.addExample() },
     { id: "tex", label: texMode ? "Show rendered document" : "Show TeX source", run: () => setTexMode((t) => !t) },
     { id: "focus", label: focus ? "Exit focus mode" : "Focus mode", hint: shortcut("."), run: () => setFocus((f) => !f) },
@@ -319,8 +381,27 @@ export default function App() {
   const streamingHere = streaming && doc && streaming.docId === doc.id ? streaming.messageId : null;
   const pendingPins = [...new Map([...blockPins.values()].map((p) => [`${p.kind}${p.n}`, p])).values()];
 
+  const continueImport = () => {
+    if (!doc || !selected) return;
+    setImportError(null);
+    importer.resume(doc, selected, selectedVision).catch((err) => setImportError(errorMessage(err)));
+  };
+
   return (
+    <MediaContext.Provider value={doc?.id ?? null}>
     <div className={`app${focus ? " app--focus" : ""}`}>
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        accept={ACCEPTED_FILES}
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (files.length) setImporting({ files, target: pickTarget.current });
+        }}
+      />
       {!focus && (
         <Sidebar
           projects={workspace.projects}
@@ -332,6 +413,7 @@ export default function App() {
           onOpen={(id) => void workspace.openDocument(id)}
           onNewDocument={newDocument}
           onNewProject={() => workspace.createProject("Untitled project")}
+          onImport={() => pickFiles("new")}
           onToggleProject={(p) => void workspace.updateProject(p.id, { collapsed: !p.collapsed })}
           onRenameProject={(p, name) => name.trim() && void workspace.updateProject(p.id, { name: name.trim() })}
           onDeleteProject={(p) => void workspace.deleteProject(p.id)}
@@ -364,9 +446,42 @@ export default function App() {
           onAsk={ask}
           onAcceptSuggestion={acceptSuggestion}
           onRejectSuggestion={rejectSuggestion}
+          onShowPage={doc.origin && doc.origin.kind !== "text" && doc.origin.files.length ? setViewer : undefined}
+          banner={
+            <>
+              <ImportBanner
+                doc={doc}
+                job={importer.job}
+                canContinue={hasModel && !importer.busy}
+                model={selected}
+                onStop={importer.stop}
+                onDismiss={importer.dismiss}
+                onContinue={continueImport}
+                onShowOriginal={setViewer}
+              />
+              {importError && (
+                <div className="import-banner import-banner--error" role="alert">
+                  <div className="import-banner__text">
+                    <span className="import-banner__title">{importError}</span>
+                  </div>
+                  <div className="import-banner__actions">
+                    <button type="button" className="text-button" onClick={() => setImportError(null)}>
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          }
         />
       ) : (
-        <EmptyMain loaded={workspace.loaded} shortcut={shortcut} onNew={() => newDocument()} onSearch={() => setPaletteOpen(true)} />
+        <EmptyMain
+          loaded={workspace.loaded}
+          shortcut={shortcut}
+          onNew={() => newDocument()}
+          onImport={() => pickFiles("new")}
+          onSearch={() => setPaletteOpen(true)}
+        />
       )}
 
       {!focus &&
@@ -390,7 +505,9 @@ export default function App() {
             pins={messagePins}
             focusKey={composerFocus}
             shortcut={shortcut}
-            onSend={(mode, text) => selected && collab.send(doc.id, selected, mode, text, context)}
+            vision={selectedVision}
+            dropped={composerDrop}
+            onSend={(mode, text, attachments) => selected && collab.send(doc.id, selected, mode, text, context, false, attachments)}
             onStop={collab.stop}
             onRetry={(threadId) => selected && collab.retry(threadId, selected)}
             onNewThread={() => {
@@ -434,6 +551,45 @@ export default function App() {
         />
       )}
 
+      {importing && (
+        <ImportDialog
+          files={importing.files}
+          openDocument={doc ? { id: doc.id, title: doc.title } : null}
+          initialTarget={importing.target}
+          providers={providers}
+          modelsLoading={modelsLoading}
+          model={selected}
+          onSelectModel={selectModel}
+          onRefreshModels={() => void refreshModels()}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onClose={() => setImporting(null)}
+          onStart={(plans) => {
+            setImporting(null);
+            setFocus(false);
+            void importer.start(plans);
+          }}
+        />
+      )}
+
+      {dragging && !importing && (
+        <DropOverlay
+          documentTitle={doc ? doc.title : null}
+          canAsk={!!doc && !panelCollapsed && !focus}
+          canInsert={!!dropEditor.current?.isConnected}
+          onCancel={() => setDragging(false)}
+          onDrop={(files, target) => {
+            setDragging(false);
+            if (target === "ask") setComposerDrop({ files, nonce: Date.now() });
+            else if (target === "insert") {
+              dropEditor.current?.focus();
+              dropEditor.current?.dispatchEvent(new CustomEvent("theoremis:insert-files", { detail: files }));
+            } else setImporting({ files, target });
+          }}
+        />
+      )}
+
+      {viewer !== null && doc?.origin && <SourceViewer doc={doc} page={viewer} onClose={() => setViewer(null)} />}
+
       {settingsOpen && settings && (
         <SettingsDialog
           settings={settings}
@@ -450,6 +606,7 @@ export default function App() {
         />
       )}
     </div>
+    </MediaContext.Provider>
   );
 }
 
@@ -457,11 +614,13 @@ function EmptyMain({
   loaded,
   shortcut,
   onNew,
+  onImport,
   onSearch,
 }: {
   loaded: boolean;
   shortcut: (keys: string) => string;
   onNew: () => void;
+  onImport: () => void;
   onSearch: () => void;
 }) {
   return (
@@ -472,10 +631,13 @@ function EmptyMain({
             <span className="wordmark wordmark--large">Theoremis</span>
             <span className="tombstone tombstone--large" />
           </div>
-          <p>Open a document from the sidebar, or start a new one.</p>
+          <p>Open a document from the sidebar, start a new one, or import a paper or your notes.</p>
           <div className="empty-main__actions">
             <button type="button" className="button button--cream" onClick={onNew}>
               New document <kbd>{shortcut("N")}</kbd>
+            </button>
+            <button type="button" className="button button--ghost" onClick={onImport}>
+              Import <kbd>{shortcut("O")}</kbd>
             </button>
             <button type="button" className="button button--ghost" onClick={onSearch}>
               Search <kbd>{shortcut("K")}</kbd>

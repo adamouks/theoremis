@@ -33,6 +33,16 @@ The repository has two parts, each with its own dependencies and build:
 - **Proofs checked by Lean.** **Formalize** writes the step in Lean 4 with Mathlib; **Check with
   Lean** runs it against Mathlib on your computer. Errors go back to the collaborator in one click,
   and a proof Lean accepts can mark the step _verified_.
+- **Bring in your research.** Import PDFs, photos of notes or a blackboard, LaTeX, Markdown, Word,
+  HTML, Jupyter notebooks, CSV or code. A vision model transcribes it into a Theoremis document,
+  statement by statement with statuses, and figures are copied straight from the PDF. Each paragraph
+  remembers its page, so the original is one click away. Without a model, files are converted
+  directly.
+- **Graphs in 2D and 3D.** `graph` and `graph3d` blocks are a graphing calculator inside the
+  document: curves, implicit curves, regions, polar and parametric plots, sliders you can play,
+  surfaces, implicit surfaces and curves in space. The collaborator can draw them too.
+- **Show the collaborator anything.** Attach images, PDFs and files to a question, and paste or drop
+  screenshots straight into a paragraph.
 - **Nothing lands without consent.** Proposed rewrites appear as an original/proposed comparison
   you accept, edit or reject. New material comes in as a dashed suggestion until you accept it.
   Every change can be undone.
@@ -192,6 +202,7 @@ outside Mathlib and Lean's own libraries. Statements and proofs don't need any o
 | --- | --- |
 | `⌘K` | Search documents and commands |
 | `⌘N` | New document |
+| `⌘O` | Import files (or drop them on the window) |
 | `⌘L` | Ask about the selected step |
 | `⌘.` / `esc` | Focus mode on / off |
 | `⌘\` | Show or hide the collaborator |
@@ -199,6 +210,48 @@ outside Mathlib and Lean's own libraries. Statements and proofs don't need any o
 | `⌘,` | Settings |
 
 On Windows and Linux use `Ctrl` for `⌘`.
+
+## Importing research
+
+**Import** in the sidebar (`⌘O`), or drop files on the window. Theoremis reads:
+
+| Files | How |
+| --- | --- |
+| PDF | Each page's text layer and image. Figures are found from what the page draws (vector paths and images), cropped from the page, and kept with the document |
+| Photos and scans (PNG, JPEG, HEIC, …) | Read by a vision model; figures it marks are cropped from the photo |
+| LaTeX, Markdown, plain text | Theorems, proofs and equations become statements; `\includegraphics` picks up images dropped alongside |
+| Word (`.docx`), HTML, Jupyter, CSV, code | Converted directly, keeping equations (Word's included), tables and images |
+
+With a model, the transcript streams into the document part by part; a failed part can be
+continued later from where it stopped. Pick a vision model (any ChatGPT model, or one like
+`qwen2.5vl` or `gemma3` in Ollama) for PDFs and photos. Without one, Theoremis lays out the text
+layer itself. Imported paragraphs show their page in the gutter, and the original opens beside it.
+
+## Graphs
+
+Add a graph from the bar under the document, or write a fence. One expression per line, in LaTeX
+or plain notation:
+
+````md
+```graph
+y = a \sin(bx)                 % a curve
+a = 1 [0, 3]                   % sliders, with their ranges
+b = 2
+f(x) = x^2 - 2                 % a function, usable as f(x) and f'(x)
+x^2 + y^2 = 4 ; dashed         % an implicit curve
+y < f(x)                       % a shaded region
+r = 1 + \cos\theta             % polar
+(\cos t, \sin 2t) [0, 2\pi]    % parametric, with the range of t
+(1, 2), (3, 4) ; label=P       % points
+view x=[-5, 5] y=[-3, 3]
+```
+````
+
+`graph3d` takes `z = f(x, y)`, implicit surfaces such as `x^2 + y^2 + z^2 = 9`, curves
+`(\cos t, \sin t, t/4) [0, 4\pi]`, surfaces `(x(u,v), y(u,v), z(u,v)) [u0, u1, v0, v1]` and
+points. A name that isn't defined yet gets an **Add a slider** button. Options follow semicolons: `color=#e64980`, `dashed`, `hidden`, `label=…`, `width=…`,
+`opacity=…`. Drag to pan (or turn, in 3D), scroll to zoom, and edit expressions in the list below
+the graph; changes are written back to the fence.
 
 ## Where your data lives
 
@@ -208,6 +261,7 @@ On Windows and Linux use `Ctrl` for `⌘`.
 | ChatGPT sign-in | `chatgpt.json` in the app config directory, encrypted (AES-256-GCM) with a key in your system keychain |
 | Projects | `workspace/projects.json` in the app data directory |
 | Documents, with their collaborator threads | one JSON file each in `workspace/documents/` |
+| Images, figures, attachments and imported originals | `workspace/assets/<document id>/`, removed with the document |
 | The Mathlib project | `lean/TheoremisMath` in the app data directory (Lean itself lives in `~/.elan`) |
 
 The directories follow each OS's conventions for the app id `app.theoremis.desktop`
@@ -247,6 +301,14 @@ app/src/                    React + TypeScript interface (Vite)
   lib/prompts.ts            Collaborator modes and the request sent to the model
   lib/useWorkspace.ts       Projects and documents, with autosave
   lib/useCollaborator.ts    Streaming replies into threads; revisions and suggestions
+  lib/attachments.ts        Files sent with a question: page images and text
+  lib/sources.ts            Reading imports: PDFs, photos, LaTeX, Markdown, Word, HTML, …
+  lib/pdf.ts, figures.ts    pdf.js pages and text, and finding figures in what a page draws
+  lib/importDoc.ts          Turning a source into a document, with or without a model
+  lib/transcript.ts         The line format models transcribe into, read as it streams
+  lib/convert.ts, docx.ts   Direct conversion of LaTeX, Markdown, Word, notebooks and tables
+  lib/graph/                The expression language, graph specs and 2D/3D geometry
+  components/graph/         Graph blocks: the plane (canvas), space (three.js), expressions
 app/src-tauri/src/
   lib.rs                    Tauri commands and app state
   chatgpt/                  Sign in with ChatGPT
@@ -257,7 +319,8 @@ app/src-tauri/src/
   lean/check.rs             What a file may run, its theorems, and reading Lean's verdict
   providers/ollama.rs       Ollama: /api/tags, streaming /api/chat (NDJSON)
   settings.rs               Settings persistence
-  storage.rs                Projects and document files
+  storage.rs                Projects, document files and their media
+  providers/mod.rs          Messages with images for vision models
 ```
 
 All network calls happen in Rust. That avoids CORS entirely (Ollama rejects browser origins by

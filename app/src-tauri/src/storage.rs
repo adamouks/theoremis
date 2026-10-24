@@ -1,4 +1,5 @@
-//! The workspace on disk: `projects.json` plus one JSON file per document.
+//! The workspace on disk: `projects.json`, one JSON file per document, and each document's
+//! media (figures, images, the original of an imported file) in `assets/<document id>/`.
 //!
 //! Documents are stored as the frontend sends them. The backend only reads the few header
 //! fields it needs to list them, so the document format can grow without touching Rust.
@@ -61,6 +62,13 @@ impl WorkspaceStore {
         self.dir.join("documents")
     }
 
+    fn assets_dir(&self, document_id: &str) -> AppResult<PathBuf> {
+        if !is_valid_id(document_id) {
+            return Err(AppError::msg("Invalid document id"));
+        }
+        Ok(self.dir.join("assets").join(document_id))
+    }
+
     pub async fn load(&self) -> AppResult<Workspace> {
         let projects = match tokio::fs::read(self.projects_path()).await {
             Ok(bytes) => serde_json::from_slice(&bytes)?,
@@ -120,11 +128,44 @@ impl WorkspaceStore {
         Ok(summary)
     }
 
+    /// Deletes a document and its media.
     pub async fn delete_document(&self, id: &str) -> AppResult<()> {
-        match tokio::fs::remove_file(self.document_path(id)?).await {
-            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
-            _ => Ok(()),
+        ignore_missing(tokio::fs::remove_file(self.document_path(id)?).await)?;
+        ignore_missing(tokio::fs::remove_dir_all(self.assets_dir(id)?).await)
+    }
+
+    /// Saves a file of a document's media under `name`, e.g. `3f2a….png`.
+    pub async fn save_asset(&self, document_id: &str, name: &str, bytes: &[u8]) -> AppResult<()> {
+        if bytes.len() > MAX_ASSET_BYTES {
+            return Err(AppError::msg(format!(
+                "That file is too large to keep with the document (the limit is {} MB).",
+                MAX_ASSET_BYTES / 1_000_000
+            )));
         }
+        let path = self.asset_path(document_id, name)?;
+        write_atomic(&path, bytes).await
+    }
+
+    /// A file of a document's media and its MIME type.
+    pub async fn read_asset(
+        &self,
+        document_id: &str,
+        name: &str,
+    ) -> AppResult<(Vec<u8>, &'static str)> {
+        let path = self.asset_path(document_id, name)?;
+        let mime = asset_mime(name).ok_or_else(|| AppError::msg("Unsupported file type"))?;
+        Ok((tokio::fs::read(path).await?, mime))
+    }
+
+    pub async fn delete_asset(&self, document_id: &str, name: &str) -> AppResult<()> {
+        ignore_missing(tokio::fs::remove_file(self.asset_path(document_id, name)?).await)
+    }
+
+    fn asset_path(&self, document_id: &str, name: &str) -> AppResult<PathBuf> {
+        if !is_valid_asset_name(name) {
+            return Err(AppError::msg(format!("Invalid file name \"{name}\"")));
+        }
+        Ok(self.assets_dir(document_id)?.join(name))
     }
 
     fn document_path(&self, id: &str) -> AppResult<PathBuf> {
@@ -135,11 +176,53 @@ impl WorkspaceStore {
     }
 }
 
+/// Imported PDFs are kept whole, so allow for long papers and scans.
+const MAX_ASSET_BYTES: usize = 200_000_000;
+
+/// The kinds of media a document can hold, by extension.
+const ASSET_TYPES: &[(&str, &str)] = &[
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("webp", "image/webp"),
+    ("gif", "image/gif"),
+    ("avif", "image/avif"),
+    ("bmp", "image/bmp"),
+    ("svg", "image/svg+xml"),
+    ("pdf", "application/pdf"),
+    ("txt", "text/plain; charset=utf-8"),
+    ("md", "text/markdown; charset=utf-8"),
+    ("tex", "text/x-tex; charset=utf-8"),
+    ("bin", "application/octet-stream"),
+];
+
+pub fn asset_mime(name: &str) -> Option<&'static str> {
+    let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
+    ASSET_TYPES.iter().find(|(e, _)| *e == ext).map(|(_, m)| *m)
+}
+
+/// An id-like stem and a known extension: these become file names inside the workspace.
+fn is_valid_asset_name(name: &str) -> bool {
+    match name.rsplit_once('.') {
+        Some((stem, _)) => is_valid_id(stem) && asset_mime(name).is_some(),
+        None => false,
+    }
+}
+
+fn ignore_missing(result: std::io::Result<()>) -> AppResult<()> {
+    match result {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
+        _ => Ok(()),
+    }
+}
+
 async fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let tmp = path.with_extension("json.tmp");
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
     tokio::fs::write(&tmp, bytes).await?;
     tokio::fs::rename(&tmp, path).await?;
     Ok(())
@@ -228,6 +311,51 @@ mod tests {
         store.delete_document("a").await.unwrap();
         store.delete_document("a").await.unwrap();
         assert_eq!(store.load().await.unwrap().documents.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn keeps_media_with_its_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::new(dir.path().join("workspace"));
+        store.save_document(&document("d1", 1)).await.unwrap();
+        store
+            .save_asset("d1", "fig-1.png", b"\x89PNG")
+            .await
+            .unwrap();
+        store
+            .save_asset("d1", "paper.pdf", b"%PDF-1.7")
+            .await
+            .unwrap();
+
+        let (bytes, mime) = store.read_asset("d1", "fig-1.png").await.unwrap();
+        assert_eq!(bytes, b"\x89PNG");
+        assert_eq!(mime, "image/png");
+        assert_eq!(
+            store.read_asset("d1", "paper.pdf").await.unwrap().1,
+            "application/pdf"
+        );
+        // Media isn't listed as a document.
+        assert_eq!(store.load().await.unwrap().documents.len(), 1);
+
+        store.delete_asset("d1", "paper.pdf").await.unwrap();
+        assert!(store.read_asset("d1", "paper.pdf").await.is_err());
+        store.delete_document("d1").await.unwrap();
+        assert!(store.read_asset("d1", "fig-1.png").await.is_err());
+        assert!(!dir.path().join("workspace/assets/d1").exists());
+    }
+
+    #[tokio::test]
+    async fn rejects_unsafe_media_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::new(dir.path().to_path_buf());
+        for name in [
+            "../x.png", "a/b.png", "x.exe", "noext", ".png", "x.png/..", "x.html",
+        ] {
+            assert!(store.save_asset("d1", name, b"x").await.is_err(), "{name}");
+        }
+        assert!(store.save_asset("../d", "x.png", b"x").await.is_err());
+        assert!(store.read_asset("d1", "../../settings.json").await.is_err());
+        assert_eq!(asset_mime("Figure.JPG"), Some("image/jpeg"));
     }
 
     #[tokio::test]

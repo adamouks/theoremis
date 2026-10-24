@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { documentAsText, type NumberedBlock } from "../lib/doc";
 import { MODE_LABELS } from "../lib/prompts";
 import { newId, timeAgo } from "../lib/text";
@@ -6,7 +6,7 @@ import type { Block, Doc, Mode, Status } from "../lib/types";
 import type { ChangeKind, SaveState } from "../lib/useWorkspace";
 import { AutoTextarea } from "./AutoTextarea";
 import { BlockView, type MarginNote, type Pin } from "./Block";
-import { ExitFocus, Focus, More } from "./Icons";
+import { ExitFocus, Focus, GraphIcon, More } from "./Icons";
 import { Markdown } from "./Markdown";
 
 interface Props {
@@ -32,6 +32,10 @@ interface Props {
   onAsk: (blockId: string, mode: Mode) => void;
   onAcceptSuggestion: (blockId: string) => void;
   onRejectSuggestion: (blockId: string) => void;
+  /** Opens the imported original at a page; set when the document has one. */
+  onShowPage?: (page: number) => void;
+  /** Shown under the header, e.g. an import's progress. */
+  banner?: ReactNode;
 }
 
 const TOOLBAR_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
@@ -57,6 +61,8 @@ export function DocumentView({
   onAsk,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onShowPage,
+  banner,
 }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [editingLede, setEditingLede] = useState(false);
@@ -116,6 +122,20 @@ export function DocumentView({
         return next;
       });
       setEditing(block.id);
+    },
+    [setBlocks],
+  );
+
+  const onAddGraph = useCallback(
+    (dim: 2 | 3) => {
+      const code = dim === 2 ? "y = a \\sin(x)\na = 1 [0, 3]" : "z = \\sin(x)\\cos(y)";
+      const block: Block = { id: newId(), source: `\`\`\`${dim === 2 ? "graph" : "graph3d"}\n${code}\n\`\`\`` };
+      setBlocks((blocks) => {
+        // A lone empty paragraph gives way to the graph.
+        const last = blocks[blocks.length - 1];
+        const rest = last && !last.source.trim() && !last.suggestion ? blocks.slice(0, -1) : blocks;
+        return [...rest, block];
+      });
     },
     [setBlocks],
   );
@@ -192,7 +212,13 @@ export function DocumentView({
     setToolbar(null);
   };
 
-  const meta = [displayName, doc.revision > 0 ? `Revision ${doc.revision}` : "New", `Edited ${timeAgo(doc.updatedAt)}`]
+  const origin = doc.origin;
+  const meta = [
+    displayName,
+    origin ? `${origin.model ? "Transcribed" : "Imported"} from ${origin.names.length > 1 ? `${origin.names.length} files` : origin.names[0]}` : null,
+    doc.revision > 0 ? `Revision ${doc.revision}` : "New",
+    `Edited ${timeAgo(doc.updatedAt)}`,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -276,6 +302,8 @@ export function DocumentView({
         </div>
       </header>
 
+      {banner}
+
       <div className="doc-scroll" ref={scroller} onMouseUp={() => requestAnimationFrame(updateToolbar)}>
         <div className="doc-page" ref={page}>
           <div className="doc-row">
@@ -344,18 +372,30 @@ export function DocumentView({
                 onAsk={(id) => onAsk(id, "ask")}
                 onAccept={onAcceptSuggestion}
                 onReject={onRejectSuggestion}
+                onShowPage={onShowPage}
               />
             ))}
           </div>
 
           <div className="doc-row">
             <div />
-            <button type="button" className="add-block" onClick={() => onAddAfter(null)}>
-              + Add a paragraph
-              <span>
-                or press <kbd>{shortcut("↵")}</kbd> while writing
-              </span>
-            </button>
+            <div className="add-block-row">
+              <button type="button" className="add-block" onClick={() => onAddAfter(null)}>
+                + Add a paragraph
+                <span>
+                  or press <kbd>{shortcut("↵")}</kbd> while writing
+                </span>
+              </button>
+              <span className="add-block-row__spacer" />
+              <button type="button" className="add-block__extra" title="A graph you can edit, like Desmos" onClick={() => onAddGraph(2)}>
+                <GraphIcon size={12} />
+                Graph
+              </button>
+              <button type="button" className="add-block__extra" title="A 3D graph: surfaces, curves and points" onClick={() => onAddGraph(3)}>
+                <GraphIcon size={12} />
+                3D graph
+              </button>
+            </div>
             <div />
           </div>
 

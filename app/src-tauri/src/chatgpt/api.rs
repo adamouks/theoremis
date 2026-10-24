@@ -57,6 +57,8 @@ pub async fn list_models(
             id: m.slug,
             name: Some(m.display_name).filter(|n| !n.trim().is_empty()),
             detail: None,
+            // Every model offered to ChatGPT plans reads images.
+            vision: Some(true),
         })
         .collect())
 }
@@ -141,11 +143,21 @@ fn request_body(model: &str, messages: &[ChatMessage]) -> Value {
         .filter(|m| m.role == Role::System)
         .map(|m| m.content.as_str())
         .collect();
-    let input: Vec<Value> = messages
-        .iter()
-        .filter(|m| m.role != Role::System)
-        .map(|m| json!({ "role": m.role, "content": m.content }))
-        .collect();
+    let input: Vec<Value> =
+        messages
+            .iter()
+            .filter(|m| m.role != Role::System)
+            .map(|m| {
+                if m.images.is_empty() || m.role != Role::User {
+                    return json!({ "role": m.role, "content": m.content });
+                }
+                let mut content = vec![json!({ "type": "input_text", "text": m.content })];
+                content.extend(m.images.iter().map(
+                    |url| json!({ "type": "input_image", "image_url": url, "detail": "high" }),
+                ));
+                json!({ "role": m.role, "content": content })
+            })
+            .collect();
     let mut body = json!({ "model": model, "input": input, "store": false, "stream": true });
     if !instructions.is_empty() {
         body["instructions"] = Value::String(instructions.join("\n\n"));
@@ -224,21 +236,13 @@ mod tests {
 
     fn messages() -> Vec<ChatMessage> {
         vec![
-            ChatMessage {
-                role: Role::System,
-                content: "Be rigorous.".into(),
-            },
-            ChatMessage {
-                role: Role::User,
-                content: "Define a limit.".into(),
-            },
-            ChatMessage {
-                role: Role::Assistant,
-                content: "Let ε > 0.".into(),
-            },
+            ChatMessage::text(Role::System, "Be rigorous."),
+            ChatMessage::text(Role::User, "Define a limit."),
+            ChatMessage::text(Role::Assistant, "Let ε > 0."),
             ChatMessage {
                 role: Role::User,
                 content: "Go on.".into(),
+                images: vec!["data:image/png;base64,iVBOR".into()],
             },
         ]
     }
@@ -292,7 +296,12 @@ mod tests {
         assert_eq!(body["stream"], true);
         assert_eq!(body["instructions"], "Be rigorous.");
         assert_eq!(body["input"].as_array().unwrap().len(), 3);
+        assert_eq!(body["input"][0]["content"], "Define a limit.");
         assert_eq!(body["input"][1]["role"], "assistant");
+        let parts = body["input"][2]["content"].as_array().unwrap();
+        assert_eq!(parts[0], json!({ "type": "input_text", "text": "Go on." }));
+        assert_eq!(parts[1]["type"], "input_image");
+        assert_eq!(parts[1]["image_url"], "data:image/png;base64,iVBOR");
     }
 
     #[tokio::test]

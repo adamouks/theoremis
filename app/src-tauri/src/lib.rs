@@ -223,12 +223,102 @@ async fn delete_document(state: tauri::State<'_, AppState>, id: String) -> AppRe
     state.workspace.delete_document(&id).await
 }
 
+/// Saves a file of a document's media. The bytes travel as the raw request body, with the
+/// document id and file name in the `x-document` and `x-name` headers.
+#[tauri::command]
+async fn save_asset(
+    state: tauri::State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> AppResult<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::msg("Expected the file's bytes."));
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .ok_or_else(|| AppError::msg(format!("Missing {name}")))
+    };
+    let (document, name) = (header("x-document")?, header("x-name")?);
+    let bytes = bytes.clone();
+    state.workspace.save_asset(&document, &name, &bytes).await?;
+    Ok(name)
+}
+
+#[tauri::command]
+async fn delete_asset(
+    state: tauri::State<'_, AppState>,
+    document: String,
+    name: String,
+) -> AppResult<()> {
+    state.workspace.delete_asset(&document, &name).await
+}
+
+/// Serves `theoremis://localhost/<document id>/<file>` (on Windows,
+/// `http://theoremis.localhost/…`) from the document's media, so figures load like any image.
+async fn serve_asset(app: tauri::AppHandle, path: String) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{Response, StatusCode, header};
+    let respond = |status: StatusCode, mime: &str, body: Vec<u8>| {
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, mime)
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(header::CACHE_CONTROL, "no-cache")
+            // SVGs are shown as images here, never as documents that run scripts.
+            .header(
+                header::CONTENT_SECURITY_POLICY,
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+            )
+            .body(body)
+            .expect("a valid response")
+    };
+    let decoded = percent_decode(path.trim_start_matches('/'));
+    let Some((document, name)) = decoded.split_once('/') else {
+        return respond(StatusCode::NOT_FOUND, "text/plain", Vec::new());
+    };
+    let state = app.state::<AppState>();
+    match state.workspace.read_asset(document, name).await {
+        Ok((bytes, mime)) => respond(StatusCode::OK, mime, bytes),
+        Err(_) => respond(StatusCode::NOT_FOUND, "text/plain", Vec::new()),
+    }
+}
+
+/// Decodes `%XX` escapes: the frontend encodes the whole path as one URL component.
+fn percent_decode(text: &str) -> String {
+    let hex = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
+            out.push(hi << 4 | lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .register_asynchronous_uri_scheme_protocol("theoremis", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(serve_asset(app, path).await);
+            });
+        })
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let data_dir = app.path().app_data_dir()?;
@@ -269,7 +359,22 @@ pub fn run() {
             load_document,
             save_document,
             delete_document,
+            save_asset,
+            delete_asset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Theoremis");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_decode;
+
+    #[test]
+    fn decodes_asset_paths() {
+        assert_eq!(percent_decode("d1%2Ffig-1.png"), "d1/fig-1.png");
+        assert_eq!(percent_decode("d1/fig.png"), "d1/fig.png");
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%zz%2f"), "%zz/");
+    }
 }

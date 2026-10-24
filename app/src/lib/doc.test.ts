@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { docStatus, documentAsText, extractRevision, numberBlocks, splitProposals, withSummary } from "./doc";
-import { buildMessages } from "./prompts";
+import { buildMessages, threadImages } from "./prompts";
 import { exampleWorkspace } from "./seed";
 import type { Block, Doc, Thread } from "./types";
 
@@ -143,5 +143,40 @@ describe("buildMessages", () => {
     expect(messages[1].content).toContain("[Find gaps]");
     expect(messages[1].content).toContain("Selection — Proof · (2)–(3):\n$$x$$");
     expect(messages[1].content).toContain("Is (2) justified?");
+  });
+
+  it("sends attached files as text, and their images to models that see", () => {
+    const doc = exampleWorkspace().documents[0];
+    const thread: Thread = {
+      id: "t",
+      title: "About notes",
+      createdAt: 0,
+      updatedAt: 0,
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          content: "",
+          mode: "ask",
+          attachments: [
+            { name: "board.jpg", kind: "image", images: ["attach-1.jpg"] },
+            { name: "paper.pdf", kind: "pdf", images: ["attach-2.jpg", "attach-3.jpg"], text: "[Page 1]\nLemma 2.", pages: 9 },
+            { name: "notes.tex", kind: "text", images: [], text: "\\begin{lemma}" },
+          ],
+          createdAt: 0,
+        },
+      ],
+    };
+    expect(threadImages(thread)).toEqual(["attach-1.jpg", "attach-2.jpg", "attach-3.jpg"]);
+    const images = new Map(threadImages(thread).map((n) => [n, `data:image/jpeg;base64,${n}`]));
+    const seeing = buildMessages(doc, thread, "", images)[1];
+    expect(seeing.images).toEqual(["data:image/jpeg;base64,attach-1.jpg", "data:image/jpeg;base64,attach-2.jpg", "data:image/jpeg;base64,attach-3.jpg"]);
+    expect(seeing.content).toContain("Attached: board.jpg (image, shown below)");
+    expect(seeing.content).toContain("Attached: paper.pdf (PDF, 9 pages, pages 1–2 shown as images)\n\n[Page 1]\nLemma 2.");
+    expect(seeing.content).toContain("Attached: notes.tex (file)\n\n\\begin{lemma}");
+    const blind = buildMessages(doc, thread, "")[1];
+    expect(blind.images).toBeUndefined();
+    expect(blind.content).toContain("Attached: board.jpg (image)\n\n[The image wasn't sent: this model can't see images.]");
+    expect(blind.content).toContain("Attached: paper.pdf (PDF, 9 pages)\n\n[Page 1]");
   });
 });

@@ -1,9 +1,11 @@
-import { memo, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { memo, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { errorMessage } from "../lib/api";
 import { STATUS_INFO, type NumberedBlock } from "../lib/doc";
+import { isImageFile, saveImage } from "../lib/media";
 import type { Status } from "../lib/types";
 import { AutoTextarea } from "./AutoTextarea";
 import { StatusGlyph } from "./Icons";
-import { Markdown } from "./Markdown";
+import { GraphContext, Markdown, MediaContext } from "./Markdown";
 import { StatusMenu } from "./StatusMenu";
 
 export interface Pin {
@@ -36,6 +38,8 @@ interface Props {
   onAsk: (id: string) => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  /** Opens the imported original at the block's page. */
+  onShowPage?: (page: number) => void;
 }
 
 const PLACEHOLDER = "Write in Markdown with LaTeX, e.g. **Theorem 1.** *For every $n\\ge 1$, …*";
@@ -58,11 +62,63 @@ export const BlockView = memo(function BlockView({
   onAsk,
   onAccept,
   onReject,
+  onShowPage,
 }: Props) {
   const { block } = numbered;
   const [menuOpen, setMenuOpen] = useState(false);
   const suggested = !!block.suggestion;
   const showSource = texMode || editing;
+  const docId = useContext(MediaContext);
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const [inserting, setInserting] = useState<{ text: string; failed: boolean } | null>(null);
+  const latest = useRef(block.source);
+  latest.current = block.source;
+
+  /** Saves images with the document and puts them at the cursor, each as its own paragraph. */
+  const insertImages = async (files: File[]) => {
+    const el = editor.current;
+    const images = files.filter(isImageFile);
+    if (!docId || !el || !images.length) return;
+    const [start, end] = [el.selectionStart, el.selectionEnd];
+    setInserting({ text: images.length === 1 ? "Adding the image…" : `Adding ${images.length} images…`, failed: false });
+    try {
+      const names = [];
+      for (const image of images) names.push(await saveImage(docId, image));
+      const source = latest.current;
+      const before = source.slice(0, start).replace(/[ \t]+$/, "");
+      const after = source.slice(end).replace(/^[ \t]+/, "");
+      const figures = names.map((n) => `![](asset:${n})`).join("\n\n");
+      const next = `${before}${before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : ""}${figures}${after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : ""}${after}`;
+      onChange(block.id, next);
+      setInserting(null);
+    } catch (err) {
+      setInserting({ text: errorMessage(err), failed: true });
+    }
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...e.clipboardData.files];
+    if (!files.some(isImageFile)) return;
+    e.preventDefault();
+    void insertImages(files);
+  };
+
+  // Images dropped on the window's "insert" target arrive as an event on the open editor.
+  useEffect(() => {
+    const el = editor.current;
+    if (!el) return;
+    const onInsert = (e: Event) => void insertImages((e as CustomEvent<File[]>).detail);
+    el.addEventListener("theoremis:insert-files", onInsert);
+    return () => el.removeEventListener("theoremis:insert-files", onInsert);
+  });
+  const graphEditing = useMemo(
+    () => ({
+      editable: !suggested,
+      compact: false,
+      onChange: (before: string, after: string) => onChange(block.id, replaceGraph(block.source, before, after)),
+    }),
+    [suggested, onChange, block.id, block.source],
+  );
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
@@ -80,7 +136,7 @@ export const BlockView = memo(function BlockView({
   const onRenderedClick = (e: MouseEvent) => {
     // A drag-selection is for asking about the text, not for editing it.
     if (!window.getSelection()?.isCollapsed) return;
-    if ((e.target as HTMLElement).closest("a, button")) return;
+    if ((e.target as HTMLElement).closest("a, button, input, [data-graph]")) return;
     onStartEdit(block.id);
   };
 
@@ -132,6 +188,11 @@ export const BlockView = memo(function BlockView({
             )}
           </button>
         )}
+        {block.page && onShowPage && (
+          <button type="button" className="gutter-page" title="Show this page of the original" onClick={() => onShowPage(block.page!)}>
+            p. {block.page}
+          </button>
+        )}
         {menuOpen && (
           <StatusMenu
             status={block.status}
@@ -153,20 +214,37 @@ export const BlockView = memo(function BlockView({
           </span>
         )}
         {showSource ? (
-          <AutoTextarea
-            className="block__source"
-            value={block.source}
-            autoFocus={editing}
-            spellCheck={false}
-            placeholder={PLACEHOLDER}
-            onChange={(e) => onChange(block.id, e.target.value)}
-            onKeyDown={onKeyDown}
-            onBlur={() => editing && onStopEdit()}
-          />
+          <>
+            <AutoTextarea
+              ref={editor}
+              className="block__source"
+              value={block.source}
+              autoFocus={editing}
+              spellCheck={false}
+              placeholder={PLACEHOLDER}
+              onChange={(e) => onChange(block.id, e.target.value)}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              // Switching to another app (to drag in a file, say) keeps the paragraph open.
+              onBlur={() => editing && document.hasFocus() && onStopEdit()}
+            />
+            {inserting && (
+              <p className={`block__inserting${inserting.failed ? " is-failed" : ""}`} role="status">
+                {inserting.text}
+                {inserting.failed && (
+                  <button type="button" className="link-button" onClick={() => setInserting(null)}>
+                    Dismiss
+                  </button>
+                )}
+              </p>
+            )}
+          </>
         ) : (
           <div className="block__rendered" onClick={onRenderedClick}>
             {block.source.trim() ? (
-              <Markdown text={numbered.text} normalized={!suggested} variant={suggested ? "ai" : "doc"} />
+              <GraphContext.Provider value={graphEditing}>
+                <Markdown text={numbered.text} normalized={!suggested} variant={suggested ? "ai" : "doc"} />
+              </GraphContext.Provider>
             ) : (
               <p className="block__placeholder">Empty paragraph — click to write</p>
             )}
@@ -205,6 +283,16 @@ export const BlockView = memo(function BlockView({
     </div>
   );
 });
+
+/** Replaces the code of the graph fence whose code is `before`. */
+export function replaceGraph(source: string, before: string, after: string): string {
+  let done = false;
+  return source.replace(/(```(?:graph3d|graph)[^\n]*\n)([\s\S]*?)(\n?```)/g, (whole, open: string, body: string, close: string) => {
+    if (done || body.replace(/\n$/, "") !== before) return whole;
+    done = true;
+    return `${open}${after}${close.startsWith("\n") ? close : `\n${close}`}`;
+  });
+}
 
 /** The bracket corners the design draws around the passage under discussion. */
 export function SelectionCorners() {

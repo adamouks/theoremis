@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { api, errorMessage } from "./api";
 import { splitProposals } from "./doc";
-import { buildMessages, DEFAULT_REQUESTS } from "./prompts";
+import { loadAttachmentImages } from "./attachments";
+import { buildMessages, DEFAULT_REQUESTS, threadImages } from "./prompts";
 import { deriveTitle, newId } from "./text";
-import type { Block, Context, Doc, Mode, ModelRef, StoredLeanCheck, Thread, ThreadMessage } from "./types";
+import type { Attachment, Block, Context, Doc, Mode, ModelRef, StoredLeanCheck, Thread, ThreadMessage } from "./types";
 import type { WorkspaceApi } from "./useWorkspace";
 
 function patchThread(doc: Doc, threadId: string, fn: (thread: Thread) => Thread): Doc {
@@ -46,10 +47,12 @@ interface Streaming {
  * The collaborator side of a document: asking in a mode, streaming replies into the
  * document's threads, and turning replies into revisions or suggestions.
  */
-export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
+export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, canSee: (model: ModelRef) => boolean) {
   const { updateDoc, mutateDocument, currentDocId } = workspace;
   const [streaming, setStreaming] = useState<Streaming | null>(null);
   const busy = useRef(false);
+  const sees = useRef(canSee);
+  sees.current = canSee;
 
   const run = useCallback(
     async (doc: Doc, thread: Thread, model: ModelRef) => {
@@ -61,7 +64,6 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
         model,
         createdAt: Date.now(),
       };
-      const messages = buildMessages(doc, thread, systemPrompt);
       const context = [...thread.messages].reverse().find((m) => m.role === "user")?.context;
       const requestId = newId();
       busy.current = true;
@@ -71,6 +73,9 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
         (d) => patchThread(d, thread.id, (t) => ({ ...t, updatedAt: Date.now(), messages: [...t.messages, reply] })),
         "meta",
       );
+      const names = sees.current(model) ? threadImages(thread) : [];
+      const images = names.length ? await loadAttachmentImages(doc.id, names) : new Map<string, string>();
+      const messages = buildMessages(doc, thread, systemPrompt, images);
 
       let content = "";
       let reasoning = "";
@@ -118,10 +123,10 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
 
   /** Asks in `mode` about `context`, in the document's active thread (or a new one). */
   const send = useCallback(
-    (docId: string, model: ModelRef, mode: Mode, text: string, context: Context | null, newThread = false) => {
+    (docId: string, model: ModelRef, mode: Mode, text: string, context: Context | null, newThread = false, attachments: Attachment[] = []) => {
       if (busy.current) return;
       const content = text.trim() || DEFAULT_REQUESTS[mode];
-      if (!content && !context) return;
+      if (!content && !context && !attachments.length) return;
       const out: { doc?: Doc; thread?: Thread } = {};
       updateDoc((d) => {
         if (d.id !== docId) return d;
@@ -133,6 +138,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
           content,
           mode,
           ...(context ? { context } : {}),
+          ...(attachments.length ? { attachments } : {}),
           createdAt: Date.now(),
         };
         const title =
@@ -140,7 +146,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string) {
             ? base.title
             : context
               ? `${THREAD_VERBS[mode]} ${context.label}`
-              : deriveTitle(content, 48) || "New thread";
+              : deriveTitle(content, 48) || (attachments[0] ? `About ${attachments[0].name}` : "New thread");
         const thread: Thread = { ...base, title, updatedAt: Date.now(), messages: [...base.messages, message] };
         out.thread = thread;
         out.doc = {

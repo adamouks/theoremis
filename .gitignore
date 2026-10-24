@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Copied from pdfjs-dist by app/vite.config.ts
+app/public/pdfjs
 *.local
 
 # Editor directories and files
