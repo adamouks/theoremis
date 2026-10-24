@@ -54,7 +54,8 @@ app/src/                      React + TypeScript interface
   lib/doc.ts                  Statuses, equation numbering, block labels, proposals
   lib/prompts.ts              Collaborator modes and requests to the model
   lib/useWorkspace.ts         Projects, documents, autosave
-  lib/useCollaborator.ts      Thread streaming, revisions, suggestions
+  lib/useCollaborator.ts      Thread streaming, revisions, suggestions, Auto-mode runs
+  lib/agent.ts                Auto mode's tools, block handles and Undo
   lib/attachments.ts          Files sent with a question: page images and text
   lib/sources.ts              Reading imports: PDFs, photos, LaTeX, Markdown, Word, HTML, …
   lib/pdf.ts, figures.ts      pdf.js pages and text; finding figures in what a page draws
@@ -108,6 +109,17 @@ For a code block proposed by **Formalize**, **Check with Lean** runs `lake env l
 The check refuses code involving `#eval`, `run_cmd`, custom elaborators/macros/syntax, `IO`, `unsafe`, or imports outside Lean/Mathlib. **These filters are a precaution, not a general-purpose sandbox or a guarantee that arbitrary input is safe to execute.** Running a Lean toolchain still executes software on your machine.
 
 AI-generated reasoning is always labeled *not verified* until a separately checked proof meets the app's verification criteria.
+
+## Manual and Auto
+
+The switch in the collaborator's composer (or `⌘K` → **Collaborator: switch to Auto**) sets how the collaborator works. It's saved in settings as `autoMode`.
+
+- **Manual** (the default): replies propose rewrites and additions, which you accept, edit or reject.
+- **Auto**: the collaborator uses tools to read and edit the document, set statuses (open, tested, draft), check Lean files, check graph code, and read other documents in the project. It loops, up to 24 rounds of tool calls per reply, until it's done, and then summarizes.
+
+Each reply lists its steps, blocks it wrote carry an **AUTO** tag until you edit them, and **Undo all** takes back every change. A statement becomes *verified* in Auto only when Lean accepts a named theorem for it with no `sorry` and only standard axioms; its note then reads "checked in Lean (Auto)".
+
+Auto needs a model that calls tools: any ChatGPT model, or an Ollama model with the `tools` capability (for example `qwen3`, `llama3.1` or `mistral-small`). With others, Auto works like Manual. How it works is in [architecture.md](../architecture.md#auto-mode).
 
 ## Importing research
 

@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import { api, errorMessage } from "./api";
 import { splitProposals } from "./doc";
+import { AGENT_TOOLS, Handles, MAX_ROUNDS, runTool, undoRun, type AgentEnv } from "./agent";
 import { loadAttachmentImages } from "./attachments";
-import { buildMessages, DEFAULT_REQUESTS, threadImages } from "./prompts";
+import { buildAgentMessages, buildMessages, DEFAULT_REQUESTS, threadImages } from "./prompts";
 import { deriveTitle, newId } from "./text";
-import type { Attachment, Block, Context, Doc, Mode, ModelRef, StoredLeanCheck, Thread, ThreadMessage } from "./types";
+import type { AgentRun, AgentStep, Attachment, Block, ChatMessage, Context, Doc, Mode, ModelRef, StoredLeanCheck, Thread, ThreadMessage, ToolCall } from "./types";
 import type { WorkspaceApi } from "./useWorkspace";
 
 function patchThread(doc: Doc, threadId: string, fn: (thread: Thread) => Thread): Doc {
@@ -48,20 +49,134 @@ interface Streaming {
  * document's threads, and turning replies into revisions or suggestions.
  */
 export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, canSee: (model: ModelRef) => boolean) {
-  const { updateDoc, mutateDocument, currentDocId } = workspace;
+  const { updateDoc, mutateDocument, transactDocument, currentDocId } = workspace;
   const [streaming, setStreaming] = useState<Streaming | null>(null);
   const busy = useRef(false);
   const sees = useRef(canSee);
   sees.current = canSee;
+  const summaries = useRef(workspace.summaries);
+  summaries.current = workspace.summaries;
+  /** The Auto reply asked to stop; it finishes the tool it is running, then stops. */
+  const stopping = useRef<string | null>(null);
+
+  /** Auto mode: rounds of reply and tool calls, each tool run on the document as it is then. */
+  const runAgent = useCallback(
+    async (doc: Doc, thread: Thread, model: ModelRef, replyId: string, images: Map<string, string>) => {
+      const handles = new Handles(doc.blocks);
+      const history: ChatMessage[] = buildAgentMessages(doc, thread, systemPrompt, handles, images);
+      const env: AgentEnv = {
+        transact: (fn) => transactDocument(doc.id, fn, "content"),
+        read: (id) => transactDocument(id, (d) => ({ doc: d, result: d }), "meta"),
+        documents: summaries.current.filter((d) => d.projectId === doc.projectId && d.id !== doc.id),
+        lean: (code) => api.leanCheck(code),
+        origin: { threadId: thread.id, messageId: replyId },
+      };
+      const run: AgentRun = { status: "running", steps: [], changes: [] };
+      const leanChecks: StoredLeanCheck[] = [];
+      let reasoning = "";
+      let frame = 0;
+      const content = () =>
+        run.steps
+          .flatMap((step) => (step.kind === "text" && step.text.trim() ? [step.text.trim()] : []))
+          .join("\n\n");
+      const publish = (error?: string) => {
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        mutateDocument(doc.id, (d) =>
+          patchMessage(d, thread.id, replyId, {
+            content: content(),
+            reasoning: reasoning || undefined,
+            agent: { ...run, steps: run.steps.map((step) => ({ ...step })), changes: [...run.changes] },
+            ...(leanChecks.length ? { leanChecks: [...leanChecks] } : {}),
+            ...(error ? { error } : {}),
+          }),
+        );
+      };
+      // Deltas repaint once a frame, and only for the open document; tool steps are written at once.
+      const soon = () => {
+        if (!frame && currentDocId() === doc.id) frame = requestAnimationFrame(() => publish());
+      };
+
+      try {
+        for (let round = 0; ; round++) {
+          if (stopping.current === replyId) {
+            run.status = "stopped";
+            break;
+          }
+          if (round === MAX_ROUNDS) {
+            run.status = "limit";
+            break;
+          }
+          const requestId = newId();
+          setStreaming((s) => (s && s.messageId === replyId ? { ...s, requestId } : s));
+          let said = "";
+          let step: Extract<AgentStep, { kind: "text" }> | null = null;
+          const calls: ToolCall[] = [];
+          const opaque: unknown[] = [];
+          const outcome = await api.streamChat({
+            requestId,
+            provider: model.provider,
+            model: model.model,
+            messages: history,
+            tools: AGENT_TOOLS,
+            onEvent: (event) => {
+              if (event.type === "delta") {
+                said += event.text;
+                if (!step) run.steps.push((step = { kind: "text", text: "" }));
+                step.text = said;
+                soon();
+              } else if (event.type === "reasoning") {
+                reasoning += event.text;
+                soon();
+              } else if (event.type === "toolCall") {
+                calls.push({ id: event.id, name: event.name, arguments: event.arguments });
+              } else {
+                opaque.push(event.item);
+              }
+            },
+          });
+          if (outcome.cancelled) {
+            run.status = "stopped";
+            break;
+          }
+          history.push({ role: "assistant", content: said, ...(calls.length ? { toolCalls: calls } : {}), ...(opaque.length ? { opaque } : {}) });
+          if (!calls.length) {
+            run.status = "done";
+            break;
+          }
+          for (const call of calls) {
+            const pending: Extract<AgentStep, { kind: "tool" }> = { kind: "tool", id: call.id, name: call.name, label: "Working…", ok: true, pending: true };
+            run.steps.push(pending);
+            publish();
+            const result = await runTool(env, handles, call);
+            Object.assign(pending, result.step, { pending: false });
+            run.changes.push(...result.changes);
+            if (result.leanCheck) {
+              const check = result.leanCheck;
+              leanChecks.splice(0, leanChecks.length, ...leanChecks.filter((c) => c.code !== check.code), check);
+            }
+            history.push({ role: "tool", toolCallId: call.id, name: call.name, content: result.output });
+            publish();
+          }
+        }
+        publish();
+      } catch (err) {
+        run.status = "failed";
+        publish(errorMessage(err));
+      }
+    },
+    [systemPrompt, transactDocument, mutateDocument, currentDocId],
+  );
 
   const run = useCallback(
-    async (doc: Doc, thread: Thread, model: ModelRef) => {
+    async (doc: Doc, thread: Thread, model: ModelRef, auto: boolean) => {
       const reply: ThreadMessage = {
         id: newId(),
         role: "assistant",
         content: "",
         mode: thread.messages[thread.messages.length - 1]?.mode ?? "ask",
         model,
+        ...(auto ? { agent: { status: "running", steps: [], changes: [] } } : {}),
         createdAt: Date.now(),
       };
       const context = [...thread.messages].reverse().find((m) => m.role === "user")?.context;
@@ -75,6 +190,13 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       );
       const names = sees.current(model) ? threadImages(thread) : [];
       const images = names.length ? await loadAttachmentImages(doc.id, names) : new Map<string, string>();
+      if (auto) {
+        stopping.current = null;
+        await runAgent(doc, thread, model, reply.id, images);
+        busy.current = false;
+        setStreaming(null);
+        return;
+      }
       const messages = buildMessages(doc, thread, systemPrompt, images);
 
       let content = "";
@@ -93,7 +215,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
           messages,
           onEvent: (event) => {
             if (event.type === "delta") content += event.text;
-            else reasoning += event.text;
+            else if (event.type === "reasoning") reasoning += event.text;
             // Only the open document re-renders while streaming; others are written at the end.
             if (!frame && currentDocId() === doc.id) frame = requestAnimationFrame(flush);
           },
@@ -118,12 +240,12 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       busy.current = false;
       setStreaming(null);
     },
-    [mutateDocument, currentDocId, systemPrompt],
+    [mutateDocument, currentDocId, systemPrompt, runAgent],
   );
 
   /** Asks in `mode` about `context`, in the document's active thread (or a new one). */
   const send = useCallback(
-    (docId: string, model: ModelRef, mode: Mode, text: string, context: Context | null, newThread = false, attachments: Attachment[] = []) => {
+    (docId: string, model: ModelRef, mode: Mode, text: string, context: Context | null, newThread = false, attachments: Attachment[] = [], auto = false) => {
       if (busy.current) return;
       const content = text.trim() || DEFAULT_REQUESTS[mode];
       if (!content && !context && !attachments.length) return;
@@ -156,14 +278,14 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         };
         return out.doc;
       }, "meta");
-      if (out.doc && out.thread) void run(out.doc, out.thread, model);
+      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto);
     },
     [run, updateDoc],
   );
 
   /** Replaces the last reply in a thread with a fresh one. */
   const retry = useCallback(
-    (threadId: string, model: ModelRef) => {
+    (threadId: string, model: ModelRef, auto = false) => {
       if (busy.current) return;
       const out: { doc?: Doc; thread?: Thread } = {};
       updateDoc((d) => {
@@ -176,14 +298,27 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         out.doc = patchThread(d, threadId, () => out.thread!);
         return out.doc;
       }, "meta");
-      if (out.doc && out.thread) void run(out.doc, out.thread, model);
+      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto);
     },
     [run, updateDoc],
   );
 
   const stop = useCallback(() => {
-    if (streaming) void api.cancelChat(streaming.requestId);
+    if (!streaming) return;
+    stopping.current = streaming.messageId;
+    void api.cancelChat(streaming.requestId);
   }, [streaming]);
+
+  /** Takes back every change an Auto reply made. */
+  const undoAgent = useCallback(
+    (threadId: string, messageId: string) =>
+      updateDoc((d) => {
+        const agent = findMessage(d, threadId, messageId)?.agent;
+        if (!agent || agent.undone || agent.status === "running" || !agent.changes.length) return d;
+        return patchMessage(undoRun(d, agent), threadId, messageId, { agent: { ...agent, undone: true } });
+      }),
+    [updateDoc],
+  );
 
   const acceptRevision = useCallback(
     (threadId: string, messageId: string) =>
@@ -272,6 +407,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
     recordLeanCheck,
     retry,
     stop,
+    undoAgent,
     acceptRevision,
     rejectRevision,
     undoRevision,

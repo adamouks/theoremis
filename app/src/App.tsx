@@ -16,7 +16,7 @@ import { blockContext, numberBlocks } from "./lib/doc";
 import { MODE_LABELS } from "./lib/prompts";
 import { ACCEPTED_FILES } from "./lib/sources";
 import { timeAgo } from "./lib/text";
-import { readsImages, type ChatGptSession, type Context, type Doc, type Mode, type ModelRef, type ProviderStatus, type Settings } from "./lib/types";
+import { callsTools, readsImages, type ChatGptSession, type Context, type Doc, type Mode, type ModelRef, type ProviderStatus, type Settings } from "./lib/types";
 import { useCollaborator } from "./lib/useCollaborator";
 import { useImport } from "./lib/useImport";
 import { useLean } from "./lib/useLean";
@@ -125,6 +125,14 @@ export default function App() {
 
   const hasModel = selected !== null && available.some((m) => sameModel(m, selected));
   const selectedVision = readsImages(infoOf(selected));
+  // Auto mode needs a model that calls tools; with any other, the collaborator works as in Manual.
+  const autoMode = !!settings?.autoMode;
+  const canAct = callsTools(infoOf(selected));
+  const auto = autoMode && canAct;
+  const setAutoMode = useCallback((on: boolean) => {
+    setSettings((s) => (s ? { ...s, autoMode: on } : s));
+    api.updateSettings({ autoMode: on }).then(setSettings, (err) => console.error(err));
+  }, []);
 
   const changeChatgpt = useCallback(
     (session: ChatGptSession) => {
@@ -251,9 +259,9 @@ export default function App() {
       setPanelCollapsed(false);
       setFocus(false);
       if (mode === "ask" || !selected || !hasModel) setComposerFocus((k) => k + 1);
-      else collab.send(doc.id, selected, mode, "", ctx);
+      else collab.send(doc.id, selected, mode, "", ctx, false, [], auto);
     },
-    [doc, numbered, selected, hasModel, collab],
+    [doc, numbered, selected, hasModel, collab, auto],
   );
 
   const acceptSuggestion = useCallback(
@@ -339,6 +347,11 @@ export default function App() {
     { id: "example", label: "Add the example project", run: () => void workspace.addExample() },
     { id: "tex", label: texMode ? "Show rendered document" : "Show TeX source", run: () => setTexMode((t) => !t) },
     { id: "focus", label: focus ? "Exit focus mode" : "Focus mode", hint: shortcut("."), run: () => setFocus((f) => !f) },
+    {
+      id: "auto",
+      label: autoMode ? "Collaborator: switch to Manual (propose only)" : "Collaborator: switch to Auto (work on the document)",
+      run: () => setAutoMode(!autoMode),
+    },
     {
       id: "panel",
       label: panelCollapsed ? "Show collaborator" : "Hide collaborator",
@@ -507,9 +520,13 @@ export default function App() {
             shortcut={shortcut}
             vision={selectedVision}
             dropped={composerDrop}
-            onSend={(mode, text, attachments) => selected && collab.send(doc.id, selected, mode, text, context, false, attachments)}
+            autoMode={autoMode}
+            canAct={canAct}
+            onSetAutoMode={setAutoMode}
+            onUndoAgent={collab.undoAgent}
+            onSend={(mode, text, attachments) => selected && collab.send(doc.id, selected, mode, text, context, false, attachments, auto)}
             onStop={collab.stop}
-            onRetry={(threadId) => selected && collab.retry(threadId, selected)}
+            onRetry={(threadId) => selected && collab.retry(threadId, selected, auto)}
             onNewThread={() => {
               updateDoc((d: Doc) => ({ ...d, activeThreadId: undefined }), "meta");
               setComposerFocus((k) => k + 1);
@@ -537,7 +554,7 @@ export default function App() {
                 blocks: d.blocks.map((b) => (b.id === blockId ? { ...b, status: "verified", note: "checked in Lean" } : b)),
               }))
             }
-            onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null)}
+            onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null, false, [], auto)}
           />
         ))}
 

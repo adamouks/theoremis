@@ -1,7 +1,7 @@
 // Settings, model and storage types mirror the serde types in src-tauri/src. Keep them in sync.
 
 export type Provider = "ollama" | "chatgpt";
-export type Role = "system" | "user" | "assistant";
+export type Role = "system" | "user" | "assistant" | "tool";
 
 export interface ModelRef {
   provider: Provider;
@@ -16,6 +16,8 @@ export interface ModelInfo {
   detail: string | null;
   /** Whether the model reads images, when the provider says. */
   vision: boolean | null;
+  /** Whether the model can call tools, which Auto mode needs, when the provider says. */
+  tools: boolean | null;
 }
 
 export interface ProviderStatus {
@@ -33,6 +35,8 @@ export interface Settings {
   lastModel: ModelRef | null;
   /** The first-run introduction has been completed (or skipped). */
   onboarded: boolean;
+  /** The collaborator works on its own (Auto) instead of only proposing (Manual). */
+  autoMode: boolean;
 }
 
 export interface SettingsUpdate {
@@ -41,20 +45,51 @@ export interface SettingsUpdate {
   displayName?: string;
   lastModel?: ModelRef;
   onboarded?: boolean;
+  autoMode?: boolean;
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  /** JSON text, as the model wrote it. */
+  arguments: string;
+}
+
+/** A tool the model may call, with a JSON Schema for its arguments. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export interface ChatMessage {
   role: Role;
   content: string;
+  /** The tools an assistant turn called. */
+  toolCalls?: ToolCall[];
+  /** For a tool result: the call it answers, and the tool's name. */
+  toolCallId?: string;
+  name?: string;
+  /** Provider items to send back with an assistant turn unchanged (ChatGPT's encrypted reasoning). */
+  opaque?: unknown[];
   /** `data:image/…;base64,…` URLs shown to the model with the text. */
   images?: string[];
 }
 
-export type StreamEvent = { type: "delta"; text: string } | { type: "reasoning"; text: string };
+export type StreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "toolCall"; id: string; name: string; arguments: string }
+  | { type: "opaque"; item: unknown };
 
 /** Whether a model reads images: ChatGPT models unless they say not, Ollama models that say so. */
 export function readsImages(info: ModelInfo | null | undefined): boolean {
   return !!info && (info.provider === "chatgpt" ? info.vision !== false : info.vision === true);
+}
+
+/** Whether a model can work in Auto mode: ChatGPT models unless they say not, Ollama models that say so. */
+export function callsTools(info: ModelInfo | null | undefined): boolean {
+  return !!info && (info.provider === "chatgpt" ? info.tools !== false : info.tools === true);
 }
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
@@ -96,6 +131,8 @@ export interface Block {
   suggestion?: { threadId: string; messageId: string };
   /** The page of the imported original this block was transcribed from. */
   page?: number;
+  /** Written or changed by the collaborator in Auto mode, until the person edits it. */
+  byAgent?: { threadId: string; messageId: string };
 }
 
 export type Mode = "ask" | "explore" | "gaps" | "challenge" | "formalize";
@@ -125,8 +162,41 @@ export interface ThreadMessage {
   leanChecks?: StoredLeanCheck[];
   /** Files sent with a question. */
   attachments?: Attachment[];
+  /** What the collaborator did on its own, for a reply in Auto mode. */
+  agent?: AgentRun;
   createdAt: number;
 }
+
+/** A reply in Auto mode: what the collaborator said and did, and how to take it back. */
+export interface AgentRun {
+  status: "running" | "done" | "stopped" | "failed" | "limit";
+  /** What it wrote and the tools it used, in order. */
+  steps: AgentStep[];
+  /** Every change to the document, oldest first, for Undo. */
+  changes: AgentChange[];
+  undone?: boolean;
+}
+
+export type AgentStep =
+  | { kind: "text"; text: string }
+  | {
+      kind: "tool";
+      id: string;
+      name: string;
+      /** What it did, for people: "Rewrote Theorem 2", "Lean accepted the proof". */
+      label: string;
+      /** More to read on request, e.g. Lean's errors. */
+      detail?: string;
+      ok: boolean;
+      pending?: boolean;
+      /** The block it concerned, to show in the document. */
+      blockId?: string;
+    };
+
+export type AgentChange =
+  /** `before` is null for an insertion and `after` for a deletion; `index` is where the block was. */
+  | { kind: "block"; blockId: string; before: Block | null; after: Block | null; index: number }
+  | { kind: "header"; before: { title: string; lede: string }; after: { title: string; lede: string } };
 
 export interface Attachment {
   /** The file's name as attached. */

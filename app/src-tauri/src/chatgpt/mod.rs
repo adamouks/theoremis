@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{AppError, AppResult};
-use crate::providers::{ChatMessage, Provider, ProviderStatus, StreamEvent};
+use crate::providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ToolSpec};
 use oauth::{AuthServer, Credentials, SHARING_SCOPE, now_ms};
 use vault::Vault;
 
@@ -326,6 +326,7 @@ impl ChatGpt {
         &self,
         model: &str,
         messages: &[ChatMessage],
+        tools: &[ToolSpec],
         emit: impl FnMut(StreamEvent),
     ) -> AppResult<()> {
         let token = self.access_token().await?;
@@ -335,6 +336,7 @@ impl ChatGpt {
             &token,
             model,
             messages,
+            tools,
             emit,
         )
         .await

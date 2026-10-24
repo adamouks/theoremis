@@ -4,6 +4,7 @@ pub mod ollama;
 pub mod test_server;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -14,15 +15,19 @@ pub enum Provider {
     Chatgpt,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
+    #[default]
     User,
     Assistant,
+    /// The result of a tool the assistant called, answering `tool_call_id`.
+    Tool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub role: Role,
     pub content: String,
@@ -30,6 +35,18 @@ pub struct ChatMessage {
     /// imported paper, a photo of handwritten notes, an attached figure.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<String>,
+    /// The tools an assistant turn called, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// For a tool result: the call it answers, and the tool's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Provider items an assistant turn produced that must go back with it unchanged, such as
+    /// ChatGPT's encrypted reasoning, so the model keeps its train of thought between tool calls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opaque: Vec<Value>,
 }
 
 impl ChatMessage {
@@ -38,9 +55,25 @@ impl ChatMessage {
         Self {
             role,
             content: content.into(),
-            images: Vec::new(),
+            ..Default::default()
         }
     }
+}
+
+/// A tool call as the model made it. `arguments` is JSON text, as models produce it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// A tool the model may call: its name, what it does, and a JSON Schema for its arguments.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
 }
 
 /// The base64 payload of a `data:` URL, for APIs that take bare base64.
@@ -52,13 +85,21 @@ pub fn data_url_base64(url: &str) -> &str {
 }
 
 /// Incremental output sent to the frontend while a reply streams in.
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StreamEvent {
     /// A piece of the visible answer.
     Delta { text: String },
     /// A piece of the model's reasoning, for models that expose it.
     Reasoning { text: String },
+    /// The model wants a tool run. The frontend runs it and sends the result in the next request.
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: String,
+    },
+    /// Provider state to send back with this turn (see [`ChatMessage::opaque`]).
+    Opaque { item: Value },
     /// Always the last event. Channel messages and the command's result travel separately,
     /// so this tells the frontend that no more deltas are in flight.
     Done,
@@ -75,6 +116,8 @@ pub struct ModelInfo {
     pub detail: Option<String>,
     /// Whether the model reads images, when the provider says.
     pub vision: Option<bool>,
+    /// Whether the model can call tools (Auto mode), when the provider says.
+    pub tools: Option<bool>,
 }
 
 /// Models offered by one provider, or why none are available.

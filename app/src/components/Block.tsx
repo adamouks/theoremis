@@ -188,6 +188,11 @@ export const BlockView = memo(function BlockView({
             )}
           </button>
         )}
+        {block.byAgent && !suggested && (
+          <span className="gutter-auto" title="Written or changed by the collaborator in Auto mode. It becomes yours when you edit it, and Undo on the reply takes it back.">
+            AUTO
+          </span>
+        )}
         {block.page && onShowPage && (
           <button type="button" className="gutter-page" title="Show this page of the original" onClick={() => onShowPage(block.page!)}>
             p. {block.page}

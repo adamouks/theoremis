@@ -7,6 +7,7 @@ import { ACCEPTED_FILES } from "../lib/sources";
 import { clockTime, initials, timeAgo } from "../lib/text";
 import {
   PROVIDER_LABELS,
+  type AgentRun,
   type Attachment,
   type Context,
   type Doc,
@@ -56,6 +57,9 @@ export interface CollaboratorActions {
   onEditRevision: (threadId: string, messageId: string) => void;
   onRejectRevision: (threadId: string, messageId: string) => void;
   onUndoRevision: (threadId: string, messageId: string) => void;
+  /** Takes back everything an Auto reply changed. */
+  onUndoAgent: (threadId: string, messageId: string) => void;
+  onSetAutoMode: (auto: boolean) => void;
   onInsertSuggestion: (threadId: string, messageId: string) => void;
   onSelectModel: (model: ModelRef) => void;
   onRefreshModels: () => void;
@@ -78,6 +82,9 @@ interface Props extends CollaboratorActions {
   hasModel: boolean;
   /** Whether the chosen model sees images. */
   vision: boolean;
+  /** Auto mode is chosen, and whether the chosen model can work in it (call tools). */
+  autoMode: boolean;
+  canAct: boolean;
   /** Files dropped on the window to attach to the next question. */
   dropped: { files: File[]; nonce: number } | null;
   streamingMessageId: string | null;
@@ -206,6 +213,9 @@ export function Collaborator(props: Props) {
         numbered={props.numbered}
         hasModel={props.hasModel}
         vision={props.vision}
+        autoMode={props.autoMode}
+        canAct={props.canAct}
+        onSetAutoMode={props.onSetAutoMode}
         dropped={props.dropped}
         streaming={!!streamingMessageId}
         busyElsewhere={props.busyElsewhere}
@@ -371,8 +381,11 @@ function AssistantMessage({
   actions: CollaboratorActions;
 }) {
   const [copied, setCopied] = useState(false);
-  // Once complete, proposals move out of the prose into their own cards.
-  const parts = streaming ? null : splitProposals(message.content);
+  const agent = message.agent;
+  // Once complete, proposals move out of the prose into their own cards. Auto replies make
+  // their changes instead of proposing them.
+  const parts = streaming || agent ? null : splitProposals(message.content);
+  const liveChanges = !!agent && agent.changes.length > 0 && !agent.undone;
   const prose = parts && (parts.revision || parts.addition) ? parts.body : message.content;
   const inserted = message.insertedBlockId ? doc.blocks.find((b) => b.id === message.insertedBlockId) : undefined;
   const insertedPin = message.insertedBlockId ? numbered.find((n) => n.block.id === message.insertedBlockId)?.suggestionIndex : undefined;
@@ -408,6 +421,11 @@ function AssistantMessage({
         <span className="msg__time">
           {MODE_LABELS[message.mode]} · {clockTime(message.createdAt)}
         </span>
+        {agent && (
+          <span className="badge-auto" title="Auto mode: the collaborator worked on the document itself.">
+            AUTO
+          </span>
+        )}
         <span className="msg__spacer" />
         {leanProved ? (
           <span className="badge-lean" title="Lean accepted the formal proof in this reply. The prose around it is still model reasoning.">
@@ -427,7 +445,17 @@ function AssistantMessage({
         </details>
       )}
 
-      {message.content ? (
+      {agent ? (
+        <AgentTimeline
+          run={agent}
+          doc={doc}
+          model={message.model?.model}
+          streaming={streaming}
+          leanFooter={streaming ? undefined : leanFooter}
+          onShowBlock={actions.onShowBlock}
+          onUndo={() => actions.onUndoAgent(thread.id, message.id)}
+        />
+      ) : message.content ? (
         prose && <Markdown text={prose} variant="ai" codeFooter={streaming ? undefined : leanFooter} />
       ) : (
         streaming &&
@@ -498,7 +526,7 @@ function AssistantMessage({
 
       {!streaming && (message.content || message.error) && (
         <div className="msg__actions">
-          {message.content && !message.insertedBlockId && !parts?.addition && !message.revision && (
+          {message.content && !agent && !message.insertedBlockId && !parts?.addition && !message.revision && (
             <button type="button" className="text-button" onClick={() => actions.onInsertSuggestion(thread.id, message.id)}>
               Insert as suggestion
             </button>
@@ -517,7 +545,7 @@ function AssistantMessage({
               {copied ? "Copied" : "Copy"}
             </button>
           )}
-          {isLast && canRetry && (
+          {isLast && canRetry && !liveChanges && (
             <button type="button" className="text-button" onClick={() => actions.onRetry(thread.id)}>
               <Retry />
               Retry
@@ -526,6 +554,105 @@ function AssistantMessage({
         </div>
       )}
     </section>
+  );
+}
+
+const WORKING: Record<string, string> = {
+  read_document: "Reading",
+  list_documents: "Looking through the project",
+  edit_block: "Rewriting",
+  insert_block: "Adding",
+  delete_block: "Removing",
+  set_status: "Setting a status",
+  set_title: "Retitling",
+  check_lean: "Checking with Lean",
+  check_graph: "Checking a graph",
+};
+
+/** An Auto reply: what the collaborator wrote and did, in order, then what it changed. */
+function AgentTimeline({
+  run,
+  doc,
+  model,
+  streaming,
+  leanFooter,
+  onShowBlock,
+  onUndo,
+}: {
+  run: AgentRun;
+  doc: Doc;
+  model?: string;
+  streaming: boolean;
+  leanFooter?: CodeFooter;
+  onShowBlock: (blockId: string) => void;
+  onUndo: () => void;
+}) {
+  const last = run.steps[run.steps.length - 1];
+  const working = streaming && !(last?.kind === "tool" && last.pending);
+  const changes = run.changes.length;
+  return (
+    <div className="agent">
+      {run.steps.map((step, i) =>
+        step.kind === "text" ? (
+          <Markdown key={i} text={step.text} variant="ai" codeFooter={leanFooter} />
+        ) : (
+          <div key={`${step.id}:${i}`} className={`agent-step${step.pending ? " is-pending" : step.ok ? "" : " is-failed"}`}>
+            <span className="agent-step__mark" aria-hidden="true">
+              {step.pending ? <span className="agent-step__spinner" /> : step.ok ? <Check /> : "!"}
+            </span>
+            <span className="agent-step__label">
+              {step.pending ? `${WORKING[step.name] ?? "Working"}…` : <Markdown text={step.label} variant="note" />}
+            </span>
+            {!step.pending && step.blockId && doc.blocks.some((b) => b.id === step.blockId) && (
+              <button type="button" className="link-button agent-step__show" onClick={() => onShowBlock(step.blockId!)}>
+                Show
+              </button>
+            )}
+            {!step.pending && step.detail && (
+              <details className="agent-step__detail">
+                <summary>Details</summary>
+                <pre>{step.detail}</pre>
+              </details>
+            )}
+          </div>
+        ),
+      )}
+      {working && (
+        <div className="thinking">
+          <CollaboratorGlyph />
+          Working with {model ?? "the model"}
+          <span className="thinking__dots">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+      )}
+      {!streaming && (
+        <div className="agent-summary">
+          <span className="agent-summary__text">
+            {run.status === "stopped"
+              ? "Stopped. "
+              : run.status === "limit"
+                ? "Stopped after the most steps one reply may take. "
+                : run.status === "failed"
+                  ? "Stopped by an error. "
+                  : ""}
+            {run.undone
+              ? `${changes} ${changes === 1 ? "change" : "changes"} undone.`
+              : changes
+                ? `${changes} ${changes === 1 ? "change" : "changes"} to the document.`
+                : "Nothing in the document changed."}
+          </span>
+          {changes > 0 && !run.undone && (
+            <button type="button" className="text-button" onClick={onUndo}>
+              <Retry />
+              Undo {changes === 1 ? "it" : "all"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -630,6 +757,9 @@ function Composer({
   numbered,
   hasModel,
   vision,
+  autoMode,
+  canAct,
+  onSetAutoMode,
   dropped,
   streaming,
   busyElsewhere,
@@ -644,6 +774,9 @@ function Composer({
   numbered: NumberedBlock[];
   hasModel: boolean;
   vision: boolean;
+  autoMode: boolean;
+  canAct: boolean;
+  onSetAutoMode: (auto: boolean) => void;
   dropped: { files: File[]; nonce: number } | null;
   streaming: boolean;
   busyElsewhere: boolean;
@@ -735,6 +868,9 @@ function Composer({
             ))}
           </div>
         )}
+        {autoMode && hasModel && !canAct && (
+          <p className="composer__warning">This model can’t use tools, so Auto works like Manual with it. Choose a ChatGPT model, or an Ollama model that supports tools, such as qwen3.</p>
+        )}
         {unseen && <p className="composer__warning">This model can’t see images, so only the text Theoremis reads from these files is sent. Choose a vision model to show it the pictures.</p>}
         <div className="composer__chips">
           {context && (
@@ -774,6 +910,28 @@ function Composer({
           <button type="button" className="chip chip--add" title="Attach images, PDFs or files" onClick={() => fileInput.current?.click()}>
             + File
           </button>
+          <div className="mode-switch" role="radiogroup" aria-label="How the collaborator works">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!autoMode}
+              className={autoMode ? undefined : "is-on"}
+              title="Manual: the collaborator proposes. Nothing changes until you accept it."
+              onClick={() => onSetAutoMode(false)}
+            >
+              Manual
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={autoMode}
+              className={autoMode ? "is-on" : undefined}
+              title="Auto: the collaborator works on the document itself, editing, checking proofs in Lean and drawing graphs, and you can undo all of it."
+              onClick={() => onSetAutoMode(true)}
+            >
+              Auto
+            </button>
+          </div>
           <input
             ref={fileInput}
             type="file"
@@ -796,7 +954,9 @@ function Composer({
               ? "Connect a model in Settings to ask…"
               : busyElsewhere
                 ? "Waiting for another reply to finish…"
-                : "Ask a follow-up, or challenge a step…"
+                : autoMode && canAct
+                  ? "Ask the collaborator to do something: prove, fix, formalize, graph…"
+                  : "Ask a follow-up, or challenge a step…"
           }
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}

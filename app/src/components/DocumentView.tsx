@@ -108,7 +108,8 @@ export function DocumentView({
   );
 
   const onChange = useCallback(
-    (id: string, source: string) => setBlocks((blocks) => blocks.map((b) => (b.id === id ? { ...b, source } : b))),
+    // A block the collaborator wrote in Auto mode is the person's once they edit it.
+    (id: string, source: string) => setBlocks((blocks) => blocks.map((b) => (b.id === id ? { ...b, source, byAgent: undefined } : b))),
     [setBlocks],
   );
 

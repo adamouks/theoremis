@@ -15,7 +15,7 @@ Theoremis is a desktop app with two halves joined by Tauri's IPC, plus a separat
 │  App.tsx ── Sidebar · DocumentView (blocks) · Collaborator · dialogs           │
 │     │                                                                          │
 │     ├─ useWorkspace     documents in memory, autosave                          │
-│     ├─ useCollaborator  threads, streaming replies, revisions, suggestions     │
+│     ├─ useCollaborator  threads, replies, revisions, Auto-mode runs            │
 │     ├─ useImport        files → documents, part by part                        │
 │     ├─ useLean          Lean status, setup, checks                             │
 │     └─ lib/             pure logic: numbering, prompts, transcripts, graphs…   │
@@ -61,10 +61,15 @@ _verified_ only when Lean accepts a formalization with no `sorry` and no unexpec
 Everything else (the collaborator agreeing, a transcription saying "proved") is at most a
 status a person chose.
 
-**Nothing changes the document without consent.** The collaborator proposes; it never edits.
-A rewrite appears as an original/proposed comparison, new material as a dashed suggestion
-block, and both can be undone after accepting. Imports are the one exception, and they only
-ever write into a new document or onto the end of one the person chose.
+**The person chooses how much the collaborator may do, and can always take it back.** In
+**Manual** mode the collaborator proposes and never edits: a rewrite appears as an
+original/proposed comparison, new material as a dashed suggestion block, and both can be
+undone after accepting. In **Auto** mode, which the person switches on, it works on the
+document itself with tools. Every change it makes is recorded on its reply and marked in the
+gutter, and one click undoes them all. Even in Auto it can't mark anything proved or adopted,
+which are judgments only the mathematician can make, and it can mark a statement verified
+only by getting Lean to accept a proof. Imports also write on their own, but only into a new
+document or onto the end of one the person chose.
 
 **Documents are opaque to Rust.** The backend stores the JSON the frontend sends and reads
 only a few header fields to list documents (`storage.rs`). The document format can grow,
@@ -124,6 +129,9 @@ from the header fields `storage.rs` reads.
 
 `useCollaborator` drives a conversation; `lib/prompts.ts` decides what the model sees.
 
+The collaborator works in one of two modes, a setting (`autoMode`) switched in the composer:
+**Manual** (the default), where replies propose, and **Auto**, where it acts (below).
+
 **What a request contains.** The system message holds the collaborator's rules (rigor, the
 "Proposed revision" / "Proposed addition" conventions, the graph syntax), the person's own
 instructions from Settings, and the whole document as text, with equation numbers and
@@ -148,10 +156,72 @@ goes into the message. When the reply runs, the images are loaded and sent only 
 can see them (`readsImages` in `lib/types.ts`), up to the twelve most recent in the thread.
 The message text always says what was attached, so a model that can't see images still knows.
 
+### Auto mode
+
+In Auto mode a reply is a loop (`runAgent` in `useCollaborator`, tools in `lib/agent.ts`):
+
+```
+request (document with block handles, thread, tools)
+   │
+   ▼
+model streams text and tool calls ──► no calls: done, the text is the summary
+   │ calls
+   ▼
+run each tool on the latest document ──► results go back as `tool` messages ──► next round
+```
+
+The tools:
+
+| Tool | Does |
+| --- | --- |
+| `read_document`, `list_documents` | Read this document (with handles) or another in the project |
+| `edit_block`, `insert_block`, `delete_block` | Change blocks |
+| `set_status` | Set open, tested or draft (never adopted, proved or verified) |
+| `set_title` | Change the title and summary |
+| `check_lean` | Run Lean on a file; with `block`, mark that block verified if Lean accepts it |
+| `check_graph` | Parse graph code and report what each line draws and any errors |
+
+How it's built, and why:
+
+- **The loop runs in the webview, not in Rust.** The tools act on documents, and documents
+  belong to the interface (Rust keeps them opaque). So Rust stays a streaming client that
+  now also passes tool definitions, tool calls and results through `chat_stream`.
+- **Blocks get short handles** (`B1`, `B2`, …) fixed for the run (`Handles`), because models
+  copy `B3` reliably and UUIDs less so. The document in the prompt is shown with them, as is
+  every `read_document`.
+- **Every tool is a function from the latest document to the next.** It runs through
+  `transactDocument` (in `useWorkspace`), a single read-modify-write that works whether or
+  not the document is open. The person can keep typing, or switch documents, mid-run without
+  losing anything. Each change records the block before and after (`AgentChange`).
+- **Undo replays the changes backwards** (`undoRun`): insertions are removed, deletions put
+  back where they were, and edits and statuses restored. Blocks the person added meanwhile
+  are left alone. Retry is hidden while a reply's changes are still in the document, so a
+  fresh attempt can't silently stack on top of them.
+- **Verified stays earned.** `set_status` refuses verified, proved and adopted. `check_lean`
+  marks a block verified only when Lean accepts every proof with no `sorry`, the file
+  declares a named theorem, and no theorem rests on axioms beyond Mathlib's standard three.
+  The note says "checked in Lean (Auto)" so it reads differently from a person's own check.
+  The remaining risk is a formalization that states something other than the block. The
+  prompt forbids weakening a statement, and the reply shows the Lean file for review.
+- **Edits undo earlier checks.** Rewriting a proved or verified block moves it back to
+  draft, since the check was of the old text.
+- **Provenance is visible.** Blocks the agent writes carry `byAgent` and an AUTO tag in the
+  gutter until the person edits them. The reply shows each step (with Lean's errors under
+  Details) and ends with how many changes it made and an **Undo all** button.
+- **Bounded.** A reply may take 24 rounds of tool calls; Stop cancels the request in flight
+  and ends the loop after the current tool. Tool failures (bad arguments, a missing block,
+  Lean errors) go back to the model as results rather than ending the run.
+- **Later turns know what happened.** The history sends each past Auto reply's text plus a
+  one-line list of what it did (`describeRun`), not the raw tool traffic.
+
+Auto needs a model that calls tools (`callsTools` in `lib/types.ts`): every ChatGPT model, and
+Ollama models whose `/api/show` capabilities include `tools`. With any other model, Auto
+works like Manual and the composer says so.
+
 ### Providers
 
-Both providers implement the same thing: take `ChatMessage`s (role, content, images), emit
-`StreamEvent`s.
+Both providers implement the same thing: take `ChatMessage`s (role, content, images, tool
+calls and results), emit `StreamEvent`s (text, reasoning, tool calls).
 
 - **ChatGPT** (`chatgpt/`). Sign in with ChatGPT is an OAuth authorization-code flow with
   PKCE, a nonce and a loopback redirect to `127.0.0.1`. The first sign-in registers the
@@ -159,10 +229,18 @@ Both providers implement the same thing: take `ChatMessage`s (role, content, ima
   before they expire. The whole connection is sealed with AES-256-GCM using a key kept in
   the OS credential store (Keychain, Credential Manager, Secret Service), with deliberately
   no plaintext fallback. Requests go to the Responses API with `store: false`; images are
-  sent as `input_image` parts.
+  sent as `input_image` parts. Tools are `function` tools; tool calls arrive as finished
+  `function_call` output items, and results go back as `function_call_output`. Because
+  nothing is stored server-side, Auto requests ask for encrypted reasoning
+  (`include: ["reasoning.encrypted_content"]`) and pass every output item back verbatim
+  (`StreamEvent::Opaque`), so the model keeps its train of thought between tool calls. A model
+  that refuses encrypted reasoning is asked again without it, and its turns are written out
+  from their text and calls.
 - **Ollama** (`providers/ollama.rs`). `GET /api/tags` lists models; `POST /api/chat` streams
-  NDJSON. Whether a model can see comes from `/api/show` capabilities. `num_ctx` is raised
-  for large requests (transcriptions), since Ollama's default context silently truncates.
+  NDJSON. Whether a model can see or call tools comes from `/api/show` capabilities. Tool
+  arguments go to Ollama as JSON objects and results as `tool` messages naming the tool;
+  calls Ollama doesn't number are numbered on arrival. `num_ctx` is raised for large
+  requests (transcriptions), since Ollama's default context silently truncates.
 
 Model lists are fetched by `list_models`, which reports each provider's availability and a
 message to show when it isn't (Ollama not running, not signed in).
@@ -293,7 +371,7 @@ Every command is in `lib.rs` and typed in `lib/api.ts`:
 | Area | Commands |
 | --- | --- |
 | Settings | `get_settings`, `update_settings` |
-| Models | `list_models`, `chat_stream` (with a channel), `chat_cancel` |
+| Models | `list_models`, `chat_stream` (with a channel, and tools in Auto mode), `chat_cancel` |
 | ChatGPT | `chatgpt_session`, `chatgpt_sign_in`, `chatgpt_cancel_sign_in`, `chatgpt_sign_out` |
 | Lean | `lean_status`, `lean_setup`, `lean_cancel_setup`, `lean_check` |
 | Workspace | `load_workspace`, `save_projects`, `load_document`, `save_document`, `delete_document` |
@@ -310,8 +388,12 @@ person as they are.
   IPC and the media scheme, and images from the app, data/blob URLs, HTTPS and the media
   scheme.
 - Lean files are screened before they run; the screening is a precaution, not a sandbox.
-- Collaborator output can't change a document without a click, and accepted changes can be
-  undone.
+- In Manual mode collaborator output can't change a document without a click, and accepted
+  changes can be undone. In Auto mode it changes only the document it was asked about (other
+  documents are read-only to it), every change is recorded and undoable, and it can't give
+  the statuses that mean a person or Lean checked something.
+- The model never runs code itself. The only thing Auto can run is a Lean check, which goes
+  through the same screening as a check the person starts.
 
 What it doesn't protect against: a malicious Mathlib, a compromised model provider, or
 someone with access to the unlocked user account. The vault's key is in that user's keychain.
@@ -346,20 +428,24 @@ as production.
 
 - **Pure logic is tested in isolation** with Vitest: equation numbering, proposals, prompt
   assembly, transcript parsing, figure detection, converters, the expression language, graph
-  specs and geometry. Most of the app's intelligence lives in `lib/` precisely so it can be
+  specs and geometry, and every Auto-mode tool and Undo, run against plain documents with a
+  fake Lean. Most of the app's intelligence lives in `lib/` precisely so it can be
   tested without a browser.
 - **Rust** has unit tests for every module, including token handling, the vault (with a fake
   key store), Lean screening and verdicts (with Lean's real output), storage, and streaming
-  clients against a one-shot local HTTP server (`providers/test_server.rs`).
+  clients, including tool calls and the encrypted-reasoning fallback, against a local HTTP
+  server that replays recorded responses (`providers/test_server.rs`).
 - **The interface** is exercised by driving the built frontend in a browser with Tauri's IPC
-  mocked (`@tauri-apps/api/mocks`), which covers imports, graphs and the collaborator
-  without a model or a desktop window.
+  mocked (`@tauri-apps/api/mocks`), which covers imports, graphs and the collaborator,
+  including a scripted Auto run with Lean, graphs, Undo and Stop, without a model or a
+  desktop window.
 
 ## Where to make a change
 
 | To… | Look at |
 | --- | --- |
 | Change what the collaborator is told | `lib/prompts.ts` |
+| Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), its working label in `Collaborator.tsx` |
 | Add a collaborator mode | `Mode` in `lib/types.ts`, `MODE_INSTRUCTIONS` in `lib/prompts.ts`, the composer in `Collaborator.tsx` |
 | Add a model provider | `providers/` (stream `StreamEvent`s from `ChatMessage`s), `Provider` in both `providers/mod.rs` and `lib/types.ts`, `list_models` and `run_chat` in `lib.rs` |
 | Add a block field | `Block` in `lib/types.ts`. Rust needs no change |

@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::service_error;
 use crate::error::{AppError, AppResult};
 use crate::providers::lines::{Flow, for_each_line};
-use crate::providers::{ChatMessage, ModelInfo, Provider, Role, StreamEvent};
+use crate::providers::{ChatMessage, ModelInfo, Provider, Role, StreamEvent, ToolSpec};
 
 const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 /// A deadline for the whole reply, body included.
@@ -57,37 +57,55 @@ pub async fn list_models(
             id: m.slug,
             name: Some(m.display_name).filter(|n| !n.trim().is_empty()),
             detail: None,
-            // Every model offered to ChatGPT plans reads images.
+            // Every model offered to ChatGPT plans reads images and calls tools.
             vision: Some(true),
+            tools: Some(true),
         })
         .collect())
 }
 
 /// Streams a reply from the Responses API. System messages become `instructions`, and
 /// nothing is stored on OpenAI's side (`store: false`).
+///
+/// With tools, the reply's output items (reasoning, text and calls) are also sent to the
+/// frontend as [`StreamEvent::Opaque`], to be passed back verbatim with the tool results.
+/// Reasoning comes encrypted for that, so the model keeps its train of thought between calls
+/// although nothing is stored; a model that won't encrypt its reasoning is asked again without.
 pub async fn stream_chat(
     http: &reqwest::Client,
     base_url: &str,
     access_token: &str,
     model: &str,
     messages: &[ChatMessage],
+    tools: &[ToolSpec],
     mut emit: impl FnMut(StreamEvent),
 ) -> AppResult<()> {
-    let response = http
-        .post(format!("{base_url}/responses"))
-        .bearer_auth(access_token)
-        .header("accept", "text/event-stream")
-        .json(&request_body(model, messages))
-        .timeout(REPLY_TIMEOUT)
-        .send()
-        .await
-        .map_err(network_error)?;
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let data = serde_json::from_str(&body).unwrap_or(Value::Null);
-        return Err(service_error(&data, Some(status.as_u16())));
+    let mut keep_items = !tools.is_empty();
+    let mut sent = post(
+        http,
+        base_url,
+        access_token,
+        &request_body(model, messages, tools, keep_items),
+    )
+    .await?;
+    if keep_items && matches!(&sent, Sent::Rejected(400, body) if refuses_encrypted_reasoning(body))
+    {
+        keep_items = false;
+        sent = post(
+            http,
+            base_url,
+            access_token,
+            &request_body(model, messages, tools, false),
+        )
+        .await?;
     }
+    let response = match sent {
+        Sent::Accepted(response) => response,
+        Sent::Rejected(status, body) => {
+            let data = serde_json::from_str(&body).unwrap_or(Value::Null);
+            return Err(service_error(&data, Some(status)));
+        }
+    };
     let content_type = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -116,6 +134,20 @@ pub async fn stream_chat(
             emit(StreamEvent::Reasoning { text });
             Ok(Flow::Continue)
         }
+        Event::Item(item) => {
+            if item.get("type").and_then(Value::as_str) == Some("function_call") {
+                let field = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or_default();
+                emit(StreamEvent::ToolCall {
+                    id: field("call_id").to_string(),
+                    name: field("name").to_string(),
+                    arguments: field("arguments").to_string(),
+                });
+            }
+            if keep_items {
+                emit(StreamEvent::Opaque { item });
+            }
+            Ok(Flow::Continue)
+        }
         Event::Completed => {
             completed = true;
             Ok(Flow::Stop)
@@ -137,38 +169,121 @@ pub async fn stream_chat(
     Ok(())
 }
 
-fn request_body(model: &str, messages: &[ChatMessage]) -> Value {
+/// Whether a 400 is about the `include` of encrypted reasoning, which some models don't support.
+fn refuses_encrypted_reasoning(body: &str) -> bool {
+    let body = body.to_ascii_lowercase();
+    body.contains("encrypted") || body.contains("\"param\":\"include\"")
+}
+
+enum Sent {
+    Accepted(reqwest::Response),
+    /// The status and body of a refusal.
+    Rejected(u16, String),
+}
+
+async fn post(
+    http: &reqwest::Client,
+    base_url: &str,
+    access_token: &str,
+    body: &Value,
+) -> AppResult<Sent> {
+    let response = http
+        .post(format!("{base_url}/responses"))
+        .bearer_auth(access_token)
+        .header("accept", "text/event-stream")
+        .json(body)
+        .timeout(REPLY_TIMEOUT)
+        .send()
+        .await
+        .map_err(network_error)?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(Sent::Accepted(response))
+    } else {
+        let body = response.text().await.unwrap_or_default();
+        Ok(Sent::Rejected(status.as_u16(), body))
+    }
+}
+
+/// The request for `messages`. With `keep_items`, an assistant turn that carries the output
+/// items it came from is sent as those items, encrypted reasoning included; otherwise its text
+/// and tool calls are written out afresh.
+fn request_body(
+    model: &str,
+    messages: &[ChatMessage],
+    tools: &[ToolSpec],
+    keep_items: bool,
+) -> Value {
     let instructions: Vec<&str> = messages
         .iter()
         .filter(|m| m.role == Role::System)
         .map(|m| m.content.as_str())
         .collect();
-    let input: Vec<Value> =
-        messages
-            .iter()
-            .filter(|m| m.role != Role::System)
-            .map(|m| {
-                if m.images.is_empty() || m.role != Role::User {
-                    return json!({ "role": m.role, "content": m.content });
-                }
+    let mut input: Vec<Value> = Vec::new();
+    for m in messages {
+        match m.role {
+            Role::System => {}
+            Role::User if !m.images.is_empty() => {
                 let mut content = vec![json!({ "type": "input_text", "text": m.content })];
                 content.extend(m.images.iter().map(
                     |url| json!({ "type": "input_image", "image_url": url, "detail": "high" }),
                 ));
-                json!({ "role": m.role, "content": content })
-            })
-            .collect();
+                input.push(json!({ "role": m.role, "content": content }));
+            }
+            Role::User => input.push(json!({ "role": m.role, "content": m.content })),
+            Role::Assistant if keep_items && !m.opaque.is_empty() => {
+                input.extend(m.opaque.iter().cloned());
+            }
+            Role::Assistant => {
+                if !m.content.is_empty() || m.tool_calls.is_empty() {
+                    input.push(json!({ "role": m.role, "content": m.content }));
+                }
+                input.extend(m.tool_calls.iter().map(|call| {
+                    json!({
+                        "type": "function_call",
+                        "call_id": call.id,
+                        "name": call.name,
+                        "arguments": call.arguments,
+                    })
+                }));
+            }
+            Role::Tool => input.push(json!({
+                "type": "function_call_output",
+                "call_id": m.tool_call_id.as_deref().unwrap_or_default(),
+                "output": m.content,
+            })),
+        }
+    }
     let mut body = json!({ "model": model, "input": input, "store": false, "stream": true });
     if !instructions.is_empty() {
         body["instructions"] = Value::String(instructions.join("\n\n"));
     }
+    if !tools.is_empty() {
+        body["tools"] = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "strict": false,
+                })
+            })
+            .collect();
+        if keep_items {
+            body["include"] = json!(["reasoning.encrypted_content"]);
+        }
+    }
     body
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 enum Event {
     Text(String),
     Reasoning(String),
+    /// A finished output item: reasoning, a message or a tool call.
+    Item(Value),
     Completed,
     Ignore,
 }
@@ -197,6 +312,11 @@ fn parse_line(line: &str) -> AppResult<Event> {
         Some("response.reasoning_summary_text.delta") => {
             delta().map_or(Event::Ignore, Event::Reasoning)
         }
+        Some("response.output_item.done") => event
+            .get("item")
+            .filter(|item| item.is_object())
+            .cloned()
+            .map_or(Event::Ignore, Event::Item),
         Some("response.completed") => Event::Completed,
         Some("response.failed") => {
             let detail = event.get("response").cloned().unwrap_or(Value::Null);
@@ -232,7 +352,8 @@ fn network_error(err: reqwest::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::test_server::{client, serve_once};
+    use crate::providers::ToolCall;
+    use crate::providers::test_server::{client, serve_each, serve_once};
 
     fn messages() -> Vec<ChatMessage> {
         vec![
@@ -243,6 +364,7 @@ mod tests {
                 role: Role::User,
                 content: "Go on.".into(),
                 images: vec!["data:image/png;base64,iVBOR".into()],
+                ..Default::default()
             },
         ]
     }
@@ -262,7 +384,7 @@ mod tests {
         )
         .await;
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "tok", "gpt-test", &messages(), |e| {
+        stream_chat(&client(), &url, "tok", "gpt-test", &messages(), &[], |e| {
             events.push(e)
         })
         .await
@@ -302,6 +424,151 @@ mod tests {
         assert_eq!(parts[0], json!({ "type": "input_text", "text": "Go on." }));
         assert_eq!(parts[1]["type"], "input_image");
         assert_eq!(parts[1]["image_url"], "data:image/png;base64,iVBOR");
+        assert!(body.get("tools").is_none());
+        assert!(body.get("include").is_none());
+    }
+
+    fn tools() -> Vec<ToolSpec> {
+        vec![ToolSpec {
+            name: "check_lean".into(),
+            description: "Check a Lean file.".into(),
+            parameters: json!({ "type": "object", "properties": { "code": { "type": "string" } } }),
+        }]
+    }
+
+    #[tokio::test]
+    async fn streams_tool_calls_and_the_items_to_send_back() {
+        let (url, server) = serve_once(
+            200,
+            "text/event-stream",
+            vec![
+                "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[],\"encrypted_content\":\"gAAA\"}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Checking.\"}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"check_lean\",\"arguments\":\"{\\\"code\\\":\\\"example : 1 = 1 := rfl\\\"}\"}}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
+            ],
+        )
+        .await;
+        let mut events = Vec::new();
+        stream_chat(&client(), &url, "tok", "m", &messages(), &tools(), |e| {
+            events.push(e)
+        })
+        .await
+        .unwrap();
+        assert_eq!(events.len(), 4);
+        assert!(
+            matches!(&events[0], StreamEvent::Opaque { item } if item["encrypted_content"] == "gAAA")
+        );
+        assert_eq!(
+            events[1],
+            StreamEvent::Delta {
+                text: "Checking.".into()
+            }
+        );
+        assert_eq!(
+            events[2],
+            StreamEvent::ToolCall {
+                id: "call_1".into(),
+                name: "check_lean".into(),
+                arguments: r#"{"code":"example : 1 = 1 := rfl"}"#.into(),
+            }
+        );
+        assert!(matches!(&events[3], StreamEvent::Opaque { item } if item["id"] == "fc_1"));
+
+        let body: Value = serde_json::from_str(&server.await.unwrap().body).unwrap();
+        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"][0]["name"], "check_lean");
+        assert_eq!(body["tools"][0]["parameters"]["type"], "object");
+        assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
+    }
+
+    #[test]
+    fn sends_tool_turns_back() {
+        let call = ToolCall {
+            id: "call_1".into(),
+            name: "check_lean".into(),
+            arguments: "{}".into(),
+        };
+        let history = vec![
+            ChatMessage::text(Role::User, "Formalize it."),
+            ChatMessage {
+                role: Role::Assistant,
+                content: "Checking.".into(),
+                tool_calls: vec![call],
+                opaque: vec![
+                    json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAA" }),
+                    json!({ "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "check_lean", "arguments": "{}" }),
+                ],
+                ..Default::default()
+            },
+            ChatMessage {
+                role: Role::Tool,
+                content: "accepted".into(),
+                tool_call_id: Some("call_1".into()),
+                name: Some("check_lean".into()),
+                ..Default::default()
+            },
+        ];
+        // The items as ChatGPT produced them, encrypted reasoning included.
+        let kept = request_body("m", &history, &tools(), true);
+        let input = kept["input"].as_array().unwrap();
+        assert_eq!(input.len(), 4);
+        assert_eq!(input[1]["encrypted_content"], "gAAA");
+        assert_eq!(input[2]["id"], "fc_1");
+        assert_eq!(
+            input[3],
+            json!({ "type": "function_call_output", "call_id": "call_1", "output": "accepted" })
+        );
+        // Without them, the turn is written out from its text and calls.
+        let fresh = request_body("m", &history, &tools(), false);
+        let input = fresh["input"].as_array().unwrap();
+        assert_eq!(input.len(), 4);
+        assert_eq!(
+            input[1],
+            json!({ "role": "assistant", "content": "Checking." })
+        );
+        assert_eq!(
+            input[2],
+            json!({ "type": "function_call", "call_id": "call_1", "name": "check_lean", "arguments": "{}" })
+        );
+        assert!(fresh.get("include").is_none());
+    }
+
+    #[tokio::test]
+    async fn asks_again_without_encrypted_reasoning_when_refused() {
+        let (url, server) = serve_each(vec![
+            (
+                400,
+                "application/json",
+                vec![
+                    r#"{"error":{"message":"Encrypted content is not supported with this model.","param":"include","code":"unsupported_parameter"}}"#,
+                ],
+            ),
+            (
+                200,
+                "text/event-stream",
+                vec![
+                    "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"check_lean\",\"arguments\":\"{}\"}}\n\n",
+                    "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
+                ],
+            ),
+        ])
+        .await;
+        let mut events = Vec::new();
+        stream_chat(&client(), &url, "tok", "m", &messages(), &tools(), |e| {
+            events.push(e)
+        })
+        .await
+        .unwrap();
+        // Only the call: without encrypted reasoning there is nothing to send back verbatim.
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], StreamEvent::ToolCall { name, .. } if name == "check_lean"));
+        let requests = server.await.unwrap();
+        let first: Value = serde_json::from_str(&requests[0].body).unwrap();
+        let second: Value = serde_json::from_str(&requests[1].body).unwrap();
+        assert!(first.get("include").is_some());
+        assert!(second.get("include").is_none());
+        assert!(second.get("tools").is_some());
     }
 
     #[tokio::test]
@@ -313,9 +580,11 @@ mod tests {
         )
         .await;
         let mut events = Vec::new();
-        let err = stream_chat(&client(), &url, "tok", "m", &messages(), |e| events.push(e))
-            .await
-            .unwrap_err();
+        let err = stream_chat(&client(), &url, "tok", "m", &messages(), &[], |e| {
+            events.push(e)
+        })
+        .await
+        .unwrap_err();
         assert_eq!(events.len(), 1);
         assert!(err.to_string().contains("ended before ChatGPT finished"));
     }
@@ -328,7 +597,7 @@ mod tests {
             vec![r#"{"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"limit"}}"#],
         )
         .await;
-        let err = stream_chat(&client(), &url, "tok", "m", &messages(), |_| {})
+        let err = stream_chat(&client(), &url, "tok", "m", &messages(), &[], |_| {})
             .await
             .unwrap_err();
         assert!(err.to_string().contains("usage limit"), "{err}");

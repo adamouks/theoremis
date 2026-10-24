@@ -1,3 +1,4 @@
+import { describeRun, documentForAgent, type Handles } from "./agent";
 import { documentAsText } from "./doc";
 import type { Attachment, ChatMessage, Doc, Mode, Thread, ThreadMessage } from "./types";
 
@@ -76,24 +77,15 @@ export function threadImages(thread: Thread): string[] {
   return names.slice(-MAX_IMAGES);
 }
 
-/**
- * The full request for the next reply in `thread`: instructions, the document, then the thread.
- * `images` holds the attached images as data URLs, by file name; leave it empty for models
- * that can't see.
- */
-export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, images: Map<string, string> = new Map()): ChatMessage[] {
-  let document = documentAsText(doc);
-  if (document.length > MAX_DOCUMENT_CHARS) {
-    document = `${document.slice(0, MAX_DOCUMENT_CHARS)}\n\n[… the rest of the document is omitted]`;
-  }
-  const system = [COLLABORATOR, userPrompt.trim(), `The document, with its current statuses:\n\n${document}`]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const history: ChatMessage[] = thread.messages
-    .filter((m) => !m.error && (m.role === "user" || m.content.trim()))
+/** The conversation so far, as the model sees it. */
+function history(thread: Thread, images: Map<string, string>): ChatMessage[] {
+  return thread.messages
+    .filter((m) => (m.role === "user" ? !m.error : m.content.trim() || (m.agent && describeRun(m.agent))))
     .map((m) => {
-      if (m.role !== "user") return { role: m.role, content: m.content };
+      if (m.role !== "user") {
+        const actions = m.agent ? describeRun(m.agent) : "";
+        return { role: m.role, content: [m.content.trim(), actions].filter(Boolean).join("\n\n") };
+      }
       const sent = (m.attachments ?? []).flatMap((a) => a.images).filter((name) => images.has(name));
       const shown = (a: Attachment) => {
         let n = 0;
@@ -102,5 +94,36 @@ export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, imag
       };
       return { role: m.role, content: describeTurn(m, shown), ...(sent.length ? { images: sent.map((name) => images.get(name)!) } : {}) };
     });
-  return [{ role: "system", content: system }, ...history];
+}
+
+const capped = (document: string) =>
+  document.length > MAX_DOCUMENT_CHARS ? `${document.slice(0, MAX_DOCUMENT_CHARS)}\n\n[… the rest of the document is omitted]` : document;
+
+/**
+ * The full request for the next reply in `thread`: instructions, the document, then the thread.
+ * `images` holds the attached images as data URLs, by file name; leave it empty for models
+ * that can't see.
+ */
+export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, images: Map<string, string> = new Map()): ChatMessage[] {
+  const system = [COLLABORATOR, userPrompt.trim(), `The document, with its current statuses:\n\n${capped(documentAsText(doc))}`]
+    .filter(Boolean)
+    .join("\n\n");
+  return [{ role: "system", content: system }, ...history(thread, images)];
+}
+
+const AUTO = `You are in Auto mode. Instead of proposing changes, you make them yourself with your tools, and every change is recorded so the mathematician can undo it.
+- The document below is as it was when you began; blocks are named by handle, e.g. B3. Call read_document to see it after your changes.
+- Do what was asked in as many steps as it takes, then stop and reply with a short summary: what you changed (by label), what Lean checked, and what is still unverified or uncertain.
+- Statuses: you may set open, tested (numerical evidence only) or draft. Adopted and proved are the mathematician's judgments. A statement becomes verified only when check_lean accepts a proof with \`block\` given, and only if the theorem states exactly what the block claims: never weaken a statement to get it accepted.
+- To formalize, write a complete file, check it, read Lean's errors, fix them and check again, until Lean accepts it or you are stuck. Put the final file in your reply in a \`\`\`lean block, and say what you couldn't formalize.
+- Keep the mathematician's notation and voice. Don't delete or rewrite material you weren't asked to touch. One block per paragraph, statement or proof.
+- Check graph code with check_graph before putting it in the document.
+- Don't write "Proposed revision" or "Proposed addition" sections in Auto mode: make the change instead.`;
+
+/** The request for a reply in Auto mode: the same conversation, the document with block handles, and the tools' rules. */
+export function buildAgentMessages(doc: Doc, thread: Thread, userPrompt: string, handles: Handles, images: Map<string, string> = new Map()): ChatMessage[] {
+  const system = [COLLABORATOR, AUTO, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}`]
+    .filter(Boolean)
+    .join("\n\n");
+  return [{ role: "system", content: system }, ...history(thread, images)];
 }

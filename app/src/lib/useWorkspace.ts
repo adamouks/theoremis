@@ -143,6 +143,35 @@ export function useWorkspace() {
     [updateDoc, enqueue, recordSummary],
   );
 
+  /**
+   * Runs `fn` on the latest version of a document, open or not, keeps the document it returns
+   * and resolves with its result. The collaborator's tools read and change a document in one
+   * step this way, so nothing written in between is lost.
+   */
+  const transactDocument = useCallback(
+    <T,>(id: string, fn: (doc: Doc) => { doc: Doc; result: T }, kind: ChangeKind = "content"): Promise<T> => {
+      if (current.current?.id === id) {
+        let result: T | undefined;
+        updateDoc((d) => {
+          const out = fn(d);
+          result = out.result;
+          return out.doc;
+        }, kind);
+        return Promise.resolve(result as T);
+      }
+      return enqueue(async () => {
+        const loaded = await api.loadDocument(id);
+        const out = fn(loaded);
+        if (out.doc !== loaded) {
+          const next = withSummary(kind === "content" ? { ...out.doc, revision: out.doc.revision + 1, updatedAt: Date.now() } : out.doc);
+          recordSummary(await api.saveDocument(next));
+        }
+        return out.result;
+      });
+    },
+    [updateDoc, enqueue, recordSummary],
+  );
+
   const openDocument = useCallback(
     async (id: string | null) => {
       if (current.current?.id === id) return;
@@ -294,6 +323,7 @@ export function useWorkspace() {
     openDocument,
     updateDoc,
     mutateDocument,
+    transactDocument,
     createProject,
     updateProject,
     deleteProject,

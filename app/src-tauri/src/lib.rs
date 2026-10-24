@@ -18,7 +18,7 @@ use chatgpt::{ChatGpt, Session};
 use error::{AppError, AppResult};
 use lean::check::CheckResult;
 use lean::{Lean, LeanStatus, SetupEvent};
-use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ollama};
+use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ToolSpec, ollama};
 use settings::{SettingsStore, SettingsUpdate, SettingsView};
 use storage::{DocumentSummary, Project, Workspace, WorkspaceStore};
 
@@ -101,9 +101,14 @@ async fn chat_stream(
     provider: Provider,
     model: String,
     messages: Vec<ChatMessage>,
+    tools: Option<Vec<ToolSpec>>,
     on_event: Channel<StreamEvent>,
 ) -> AppResult<ChatOutcome> {
-    let result = run_chat(&state, request_id, provider, model, messages, &on_event).await;
+    let tools = tools.unwrap_or_default();
+    let result = run_chat(
+        &state, request_id, provider, model, messages, &tools, &on_event,
+    )
+    .await;
     let _ = on_event.send(StreamEvent::Done);
     result
 }
@@ -114,6 +119,7 @@ async fn run_chat(
     provider: Provider,
     model: String,
     messages: Vec<ChatMessage>,
+    tools: &[ToolSpec],
     on_event: &Channel<StreamEvent>,
 ) -> AppResult<ChatOutcome> {
     if messages.is_empty() {
@@ -134,9 +140,14 @@ async fn run_chat(
         match provider {
             Provider::Ollama => {
                 let url = state.settings.ollama_base_url();
-                ollama::stream_chat(&state.http, &url, &model, &messages, emit).await
+                ollama::stream_chat(&state.http, &url, &model, &messages, tools, emit).await
             }
-            Provider::Chatgpt => state.chatgpt.stream_chat(&model, &messages, emit).await,
+            Provider::Chatgpt => {
+                state
+                    .chatgpt
+                    .stream_chat(&model, &messages, tools, emit)
+                    .await
+            }
         }
     };
     // Dropping the request future closes the connection, which also stops generation server-side.
