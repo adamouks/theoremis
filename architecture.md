@@ -18,6 +18,7 @@ Theoremis is a desktop app with two halves joined by Tauri's IPC, plus a separat
 │     ├─ useCollaborator  threads, replies, revisions, Auto-mode runs            │
 │     ├─ useImport        files → documents, part by part                        │
 │     ├─ useLean          Lean status, setup, checks                             │
+│     ├─ components/ai/   the collaborator's orbs, reasoning and run timeline    │
 │     └─ lib/             pure logic: numbering, prompts, transcripts, graphs…   │
 │                                                                                │
 └───────────────┬────────────────────────────────────────────┬───────────────────┘
@@ -217,6 +218,35 @@ How it's built, and why:
 Auto needs a model that calls tools (`callsTools` in `lib/types.ts`): every ChatGPT model, and
 Ollama models whose `/api/show` capabilities include `tools`. With any other model, Auto
 works like Manual and the composer says so.
+
+### How the collaborator looks
+
+The collaborator's AI surfaces live in `components/ai/`. Motion there carries information
+about what the model is doing; none of it is decoration on its own.
+
+| Piece | Shows |
+| --- | --- |
+| `Orb` | The model is working. Its motion says what at: thinking, reading, Lean, writing, graphs (`toolActivity`) |
+| `Shimmer` | Status text while something runs: "Thinking…", "Checking with Lean…" |
+| `Reasoning` | What the model thought. It opens while the model thinks, folds a second after the answer starts, and then says how long it thought (`thoughtSeconds`) |
+| `AgentTimeline` | An Auto reply: its text, with each tool on a rail between. Lean's errors open under Details. It ends with what changed, Undo, and how long the run took (`finishedAt`) |
+| `ComposerBeam`, `AutoLabel` | A light around the composer and a lit "Auto" while Auto works on its own |
+| `Sparks` | Two moments worth marking: Lean verifying a statement, and the person taking in a proposal (Accept, Insert) |
+| `Spotlight`, `ThreadEdges` | Proposal cards lit under the pointer, and soft edges where the thread scrolls |
+
+- **The effects are vendored, behind wrappers.** `src/vendor/` holds Libraries.dev's Thinking
+  Orbs and six React Bits components, as upstream wrote them. `components/ai/effects.tsx`
+  wraps each with Theoremis's colours and sizes, so the rest of the app never imports a
+  vendored file. The reasoning, chain-of-thought, scroll-to-latest and suggestion patterns
+  follow Vercel AI Elements and Prompt Kit, reimplemented in plain CSS (the app has no
+  Tailwind). Licenses are in `THIRD_PARTY_NOTICES.md` and `src/vendor/README.md`.
+- **Agents Kit's own components aren't used.** They carry a non-commercial license, which
+  doesn't fit an MIT app. Only the MIT and Apache-2.0 work it collects is used.
+- **Sparks are earned.** A verified step sparks only when it turns verified in front of the
+  person (pending to verified), not when a thread with one loads.
+- **Everything stops for reduced motion.** The canvas effects check
+  `prefers-reduced-motion` and pause offscreen. The CSS motion stops under the global
+  reduced-motion rule.
 
 ### Providers
 
@@ -446,7 +476,8 @@ as production.
 | To… | Look at |
 | --- | --- |
 | Change what the collaborator is told | `lib/prompts.ts` |
-| Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), its working label in `Collaborator.tsx` |
+| Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), its working label in `components/ai/AgentTimeline.tsx` and its orb in `toolActivity` (`components/ai/effects.tsx`) |
+| Change the collaborator's effects or their colours | The wrappers in `components/ai/effects.tsx`. Leave `src/vendor/` as upstream wrote it, and list any change in `src/vendor/README.md` |
 | Add a collaborator mode | `Mode` in `lib/types.ts`, `MODE_INSTRUCTIONS` in `lib/prompts.ts`, the composer in `Collaborator.tsx` |
 | Add a model provider | `providers/` (stream `StreamEvent`s from `ChatMessage`s), `Provider` in both `providers/mod.rs` and `lib/types.ts`, `list_models` and `run_chat` in `lib.rs` |
 | Add a block field | `Block` in `lib/types.ts`. Rust needs no change |

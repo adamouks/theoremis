@@ -115,4 +115,6 @@ These are planned capabilities, not promises of release dates.
 
 Theoremis is free and open source under the [MIT License](LICENSE). Contributions, bug reports, and feedback are welcome through [GitHub Issues](https://github.com/adamouks/theoremis/issues).
 
+The collaborator's visual effects include code from [Libraries.dev](https://github.com/Jakubantalik/Libraries.dev) (MIT) and [React Bits](https://github.com/DavidHDev/react-bits) (MIT with the Commons Clause), with patterns from [Vercel AI Elements](https://github.com/vercel/ai-elements) (Apache-2.0) and [Prompt Kit](https://github.com/ibelick/prompt-kit) (MIT). Their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 **[Try Theoremis](https://theoremis.com) · [Download installers](https://github.com/adamouks/theoremis/releases/latest)**

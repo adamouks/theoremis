@@ -138,7 +138,7 @@ export function documentForAgent(doc: Doc, handles: Handles): string {
 /** What a tool did: what the model is told, what the person sees, and what changed. */
 export interface ToolOutcome {
   output: string;
-  step: { label: string; detail?: string; ok: boolean; blockId?: string };
+  step: { label: string; detail?: string; ok: boolean; blockId?: string; verified?: boolean };
   changes: AgentChange[];
   leanCheck?: StoredLeanCheck;
 }
@@ -418,7 +418,7 @@ async function checkLean(env: AgentEnv, handles: Handles, args: Record<string, u
       result: {
         ...outcome,
         output: `${report}\n\n${handles.of(after.id)} is now verified.`,
-        step: { ...outcome.step, label: `Lean accepted the proof · ${labelOf(next, after.id)} is verified`, blockId: after.id },
+        step: { ...outcome.step, label: `Lean accepted the proof · ${labelOf(next, after.id)} is verified`, blockId: after.id, verified: true },
         changes: [{ kind: "block", blockId: after.id, before, after, index }],
       },
     };

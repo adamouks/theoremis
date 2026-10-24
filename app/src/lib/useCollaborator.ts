@@ -24,6 +24,11 @@ function findMessage(doc: Doc, threadId: string, messageId: string) {
   return doc.threads.find((t) => t.id === threadId)?.messages.find((m) => m.id === messageId);
 }
 
+/** Whole seconds a model reasoned, at least one, or nothing if it didn't. */
+function seconds(ms: number): number | undefined {
+  return ms > 0 ? Math.max(1, Math.round(ms / 1000)) : undefined;
+}
+
 const THREAD_VERBS: Record<Mode, string> = {
   ask: "About",
   explore: "Exploring",
@@ -74,6 +79,8 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       const run: AgentRun = { status: "running", steps: [], changes: [] };
       const leanChecks: StoredLeanCheck[] = [];
       let reasoning = "";
+      /** Time spent reasoning: in each round, from the request to its last reasoning. */
+      let thought = 0;
       let frame = 0;
       const content = () =>
         run.steps
@@ -86,6 +93,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
           patchMessage(d, thread.id, replyId, {
             content: content(),
             reasoning: reasoning || undefined,
+            thoughtSeconds: seconds(thought),
             agent: { ...run, steps: run.steps.map((step) => ({ ...step })), changes: [...run.changes] },
             ...(leanChecks.length ? { leanChecks: [...leanChecks] } : {}),
             ...(error ? { error } : {}),
@@ -110,6 +118,8 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
           const requestId = newId();
           setStreaming((s) => (s && s.messageId === replyId ? { ...s, requestId } : s));
           let said = "";
+          const asked = performance.now();
+          let reasoned = 0;
           let step: Extract<AgentStep, { kind: "text" }> | null = null;
           const calls: ToolCall[] = [];
           const opaque: unknown[] = [];
@@ -127,6 +137,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
                 soon();
               } else if (event.type === "reasoning") {
                 reasoning += event.text;
+                reasoned = performance.now();
                 soon();
               } else if (event.type === "toolCall") {
                 calls.push({ id: event.id, name: event.name, arguments: event.arguments });
@@ -135,6 +146,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
               }
             },
           });
+          if (reasoned) thought += reasoned - asked;
           if (outcome.cancelled) {
             run.status = "stopped";
             break;
@@ -159,9 +171,11 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
             publish();
           }
         }
+        run.finishedAt = Date.now();
         publish();
       } catch (err) {
         run.status = "failed";
+        run.finishedAt = Date.now();
         publish(errorMessage(err));
       }
     },
@@ -201,10 +215,14 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
 
       let content = "";
       let reasoning = "";
+      const asked = performance.now();
+      let reasoned = 0;
       let frame = 0;
       const flush = () => {
         frame = 0;
-        mutateDocument(doc.id, (d) => patchMessage(d, thread.id, reply.id, { content, reasoning: reasoning || undefined }));
+        mutateDocument(doc.id, (d) =>
+          patchMessage(d, thread.id, reply.id, { content, reasoning: reasoning || undefined, thoughtSeconds: reasoned ? seconds(reasoned - asked) : undefined }),
+        );
       };
       let error: string | undefined;
       try {
@@ -215,7 +233,10 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
           messages,
           onEvent: (event) => {
             if (event.type === "delta") content += event.text;
-            else if (event.type === "reasoning") reasoning += event.text;
+            else if (event.type === "reasoning") {
+              reasoning += event.text;
+              reasoned = performance.now();
+            }
             // Only the open document re-renders while streaming; others are written at the end.
             if (!frame && currentDocId() === doc.id) frame = requestAnimationFrame(flush);
           },
@@ -230,6 +251,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         patchMessage(d, thread.id, reply.id, {
           content,
           reasoning: reasoning || undefined,
+          thoughtSeconds: reasoned ? seconds(reasoned - asked) : undefined,
           error,
           revision:
             proposed && context?.blockId && d.blocks.some((b) => b.id === context.blockId)

@@ -152,6 +152,8 @@ export interface ThreadMessage {
   mode: Mode;
   context?: Context;
   reasoning?: string;
+  /** How long the model reasoned before answering, in whole seconds. */
+  thoughtSeconds?: number;
   model?: ModelRef;
   error?: string;
   /** The block this reply was inserted as, if any. */
@@ -175,6 +177,8 @@ export interface AgentRun {
   /** Every change to the document, oldest first, for Undo. */
   changes: AgentChange[];
   undone?: boolean;
+  /** When the run ended, to say how long it worked. */
+  finishedAt?: number;
 }
 
 export type AgentStep =
@@ -191,6 +195,8 @@ export type AgentStep =
       pending?: boolean;
       /** The block it concerned, to show in the document. */
       blockId?: string;
+      /** Lean accepted a proof of the block and it was marked verified. */
+      verified?: boolean;
     };
 
 export type AgentChange =

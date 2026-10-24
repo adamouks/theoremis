@@ -7,7 +7,6 @@ import { ACCEPTED_FILES } from "../lib/sources";
 import { clockTime, initials, timeAgo } from "../lib/text";
 import {
   PROVIDER_LABELS,
-  type AgentRun,
   type Attachment,
   type Context,
   type Doc,
@@ -21,6 +20,9 @@ import {
 } from "../lib/types";
 import { splitProposals, type NumberedBlock } from "../lib/doc";
 import { numberEquations } from "../lib/text";
+import { AgentTimeline } from "./ai/AgentTimeline";
+import { AutoLabel, ComposerBeam, Orb, Shimmer, Sparks, Spotlight, ThreadEdges, type ClickSparkHandle } from "./ai/effects";
+import { Reasoning } from "./ai/Reasoning";
 import { AutoTextarea } from "./AutoTextarea";
 import { SelectionCorners, type Pin } from "./Block";
 import {
@@ -43,6 +45,12 @@ import { Markdown, MediaContext, type CodeFooter } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
 
 const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
+
+/** Ways to start a thread, after Prompt Kit's prompt suggestions (MIT, see THIRD_PARTY_NOTICES.md). */
+const SUGGESTIONS = {
+  manual: ["Where is this argument weakest?", "What should I prove next?", "Explain the key idea plainly", "Suggest a cleaner proof"],
+  auto: ["Prove the open statements and check them in Lean", "Find the gaps in this proof and fix them", "Formalize the main theorem in Lean", "Graph the functions in this document"],
+};
 
 export interface CollaboratorActions {
   onSend: (mode: Mode, text: string, attachments: Attachment[]) => void;
@@ -98,13 +106,24 @@ interface Props extends CollaboratorActions {
 export function Collaborator(props: Props) {
   const { doc, thread, context, streamingMessageId, onCollapse, shortcut } = props;
   const [threadsOpen, setThreadsOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  /** The reader has scrolled up far enough to want a way back to the latest. */
+  const [behind, setBehind] = useState(false);
+
+  const measure = (el: HTMLDivElement) => {
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinned.current = gap < 60;
+    setBehind(gap > 160);
+  };
 
   // Follow a streaming reply only while the reader is already at the bottom.
   useEffect(() => {
     const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (pinned.current) el.scrollTop = el.scrollHeight;
+    measure(el);
   }, [thread]);
 
   useEffect(() => {
@@ -119,7 +138,7 @@ export function Collaborator(props: Props) {
     <aside className="panel">
       <header className="panel-header">
         <div className="panel-title">
-          <CollaboratorGlyph />
+          {streamingMessageId ? <Orb activity="working" /> : <CollaboratorGlyph />}
           <span className="panel-title__name">Collaborator</span>
           {(thread || threads.length > 0) && <span className="panel-title__sep">/</span>}
           <div className="menu-anchor panel-title__thread">
@@ -174,36 +193,53 @@ export function Collaborator(props: Props) {
         </div>
       </header>
 
-      <div
-        className="thread"
-        ref={scroller}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-        }}
-      >
-        {!thread || thread.messages.length === 0 ? (
-          <EmptyThread hasModel={props.hasModel} providers={props.providers} onOpenSettings={props.onOpenSettings} shortcut={shortcut} />
-        ) : (
-          thread.messages.map((message) =>
-            message.role === "user" ? (
-              <UserMessage key={message.id} message={message} displayName={props.displayName} onShowBlock={props.onShowBlock} />
-            ) : (
-              <AssistantMessage
-                key={message.id}
-                message={message}
-                thread={thread}
-                doc={doc}
-                numbered={props.numbered}
-                streaming={message.id === streamingMessageId}
-                isLast={message === last}
-                canRetry={props.hasModel && !streamingMessageId && !props.busyElsewhere}
-                pin={props.pins.get(message.id)}
-                lean={props.lean}
-                actions={props}
-              />
-            ),
-          )
+      <div className="thread-wrap">
+        <div className="thread" ref={scroller} onScroll={(e) => measure(e.currentTarget)}>
+          {!thread || thread.messages.length === 0 ? (
+            <EmptyThread
+              hasModel={props.hasModel}
+              providers={props.providers}
+              autoMode={props.autoMode && props.canAct}
+              onSuggest={(text) => setPrefill({ text, nonce: Date.now() })}
+              onOpenSettings={props.onOpenSettings}
+              shortcut={shortcut}
+            />
+          ) : (
+            thread.messages.map((message) =>
+              message.role === "user" ? (
+                <UserMessage key={message.id} message={message} displayName={props.displayName} onShowBlock={props.onShowBlock} />
+              ) : (
+                <AssistantMessage
+                  key={message.id}
+                  message={message}
+                  thread={thread}
+                  doc={doc}
+                  numbered={props.numbered}
+                  streaming={message.id === streamingMessageId}
+                  isLast={message === last}
+                  canRetry={props.hasModel && !streamingMessageId && !props.busyElsewhere}
+                  pin={props.pins.get(message.id)}
+                  lean={props.lean}
+                  actions={props}
+                />
+              ),
+            )
+          )}
+        </div>
+        <ThreadEdges />
+        {behind && (
+          <button
+            type="button"
+            className="jump-latest"
+            aria-label="Scroll to the latest"
+            title="Scroll to the latest"
+            onClick={() => {
+              pinned.current = true;
+              scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+            }}
+          >
+            <ChevronDown size={11} />
+          </button>
         )}
       </div>
 
@@ -217,6 +253,7 @@ export function Collaborator(props: Props) {
         canAct={props.canAct}
         onSetAutoMode={props.onSetAutoMode}
         dropped={props.dropped}
+        prefill={prefill}
         streaming={!!streamingMessageId}
         busyElsewhere={props.busyElsewhere}
         focusKey={props.focusKey}
@@ -232,11 +269,16 @@ export function Collaborator(props: Props) {
 function EmptyThread({
   hasModel,
   providers,
+  autoMode,
+  onSuggest,
   onOpenSettings,
   shortcut,
 }: {
   hasModel: boolean;
   providers: ProviderStatus[];
+  /** Auto mode is on and the model can work in it. */
+  autoMode: boolean;
+  onSuggest: (text: string) => void;
   onOpenSettings: () => void;
   shortcut: (keys: string) => string;
 }) {
@@ -262,9 +304,22 @@ function EmptyThread({
   }
   return (
     <div className="thread-empty">
-      <CollaboratorGlyph size={12} />
-      <p>Select a step in your proof to ask about it, find gaps, or challenge it.</p>
+      <Orb activity="thinking" size={32} />
+      <p>
+        {autoMode
+          ? "Tell the collaborator what to do. It edits the document, checks proofs in Lean and draws graphs, and you can undo all of it."
+          : "Select a step in your proof to ask about it, find gaps, or challenge it."}
+      </p>
       <kbd>{shortcut("L")}</kbd>
+      {hasModel && (
+        <div className="suggestions" aria-label="Suggestions">
+          {SUGGESTIONS[autoMode ? "auto" : "manual"].map((text) => (
+            <button key={text} type="button" className="suggestion" onClick={() => onSuggest(text)}>
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -381,6 +436,14 @@ function AssistantMessage({
   actions: CollaboratorActions;
 }) {
   const [copied, setCopied] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  const sparks = useRef<ClickSparkHandle>(null);
+  /** Sparks from the button that took a proposal in. They live on the message, since the card goes at once. */
+  const celebrate = (button: HTMLElement) => {
+    const box = section.current?.getBoundingClientRect();
+    const at = button.getBoundingClientRect();
+    if (box) sparks.current?.spark(at.left + at.width / 2 - box.left, at.top + at.height / 2 - box.top);
+  };
   const agent = message.agent;
   // Once complete, proposals move out of the prose into their own cards. Auto replies make
   // their changes instead of proposing them.
@@ -414,7 +477,8 @@ function AssistantMessage({
     ) : null;
 
   return (
-    <section className="msg msg--ai">
+    <section ref={section} className={`msg msg--ai${streaming ? " is-streaming" : ""}`}>
+      <Sparks ref={sparks} className="msg__sparks" />
       <div className="msg__head">
         <CollaboratorGlyph />
         <span className="msg__author msg__author--ai">Collaborator</span>
@@ -423,7 +487,7 @@ function AssistantMessage({
         </span>
         {agent && (
           <span className="badge-auto" title="Auto mode: the collaborator worked on the document itself.">
-            AUTO
+            {streaming ? <AutoLabel /> : "Auto"}
           </span>
         )}
         <span className="msg__spacer" />
@@ -439,10 +503,11 @@ function AssistantMessage({
       </div>
 
       {message.reasoning && (
-        <details className="reasoning" open={streaming && !message.content}>
-          <summary>{streaming && !message.content ? "Thinking…" : "Reasoning"}</summary>
-          <div className="reasoning__body">{message.reasoning}</div>
-        </details>
+        <Reasoning
+          text={message.reasoning}
+          thinking={streaming && !message.content && !agent?.steps.length}
+          seconds={message.thoughtSeconds}
+        />
       )}
 
       {agent ? (
@@ -450,6 +515,7 @@ function AssistantMessage({
           run={agent}
           doc={doc}
           model={message.model?.model}
+          startedAt={message.createdAt}
           streaming={streaming}
           leanFooter={streaming ? undefined : leanFooter}
           onShowBlock={actions.onShowBlock}
@@ -461,13 +527,10 @@ function AssistantMessage({
         streaming &&
         !message.reasoning && (
           <div className="thinking">
-            <CollaboratorGlyph />
-            {message.mode === "gaps" ? "Reviewing" : "Thinking"} with {message.model?.model ?? "the model"}
-            <span className="thinking__dots">
-              <span />
-              <span />
-              <span />
-            </span>
+            <Orb activity={message.mode === "gaps" ? "reading" : "thinking"} />
+            <Shimmer>
+              {message.mode === "gaps" ? "Reviewing" : "Thinking"} with {message.model?.model ?? "the model"}…
+            </Shimmer>
           </div>
         )
       )}
@@ -479,11 +542,11 @@ function AssistantMessage({
       )}
 
       {message.revision && !streaming && (
-        <RevisionCard message={message} thread={thread} numbered={numbered} pin={pin} actions={actions} />
+        <RevisionCard message={message} thread={thread} numbered={numbered} pin={pin} actions={actions} onAccepted={celebrate} />
       )}
 
       {parts?.addition && !message.insertedBlockId && (
-        <div className="addition">
+        <Spotlight className="addition">
           <div className="revision__head">
             <StatusGlyph suggested size={8} />
             <span className="revision__title">Proposed addition</span>
@@ -493,12 +556,19 @@ function AssistantMessage({
             <Markdown text={parts.addition} variant="ai" />
           </div>
           <div className="revision__actions">
-            <button type="button" className="button button--primary button--small" onClick={() => actions.onInsertSuggestion(thread.id, message.id)}>
+            <button
+              type="button"
+              className="button button--primary button--small"
+              onClick={(e) => {
+                celebrate(e.currentTarget);
+                actions.onInsertSuggestion(thread.id, message.id);
+              }}
+            >
               Insert as suggestion
             </button>
             <span className="addition__hint">Nothing changes until you accept it in the document.</span>
           </div>
-        </div>
+        </Spotlight>
       )}
 
       {message.insertedBlockId && (
@@ -557,117 +627,20 @@ function AssistantMessage({
   );
 }
 
-const WORKING: Record<string, string> = {
-  read_document: "Reading",
-  list_documents: "Looking through the project",
-  edit_block: "Rewriting",
-  insert_block: "Adding",
-  delete_block: "Removing",
-  set_status: "Setting a status",
-  set_title: "Retitling",
-  check_lean: "Checking with Lean",
-  check_graph: "Checking a graph",
-};
-
-/** An Auto reply: what the collaborator wrote and did, in order, then what it changed. */
-function AgentTimeline({
-  run,
-  doc,
-  model,
-  streaming,
-  leanFooter,
-  onShowBlock,
-  onUndo,
-}: {
-  run: AgentRun;
-  doc: Doc;
-  model?: string;
-  streaming: boolean;
-  leanFooter?: CodeFooter;
-  onShowBlock: (blockId: string) => void;
-  onUndo: () => void;
-}) {
-  const last = run.steps[run.steps.length - 1];
-  const working = streaming && !(last?.kind === "tool" && last.pending);
-  const changes = run.changes.length;
-  return (
-    <div className="agent">
-      {run.steps.map((step, i) =>
-        step.kind === "text" ? (
-          <Markdown key={i} text={step.text} variant="ai" codeFooter={leanFooter} />
-        ) : (
-          <div key={`${step.id}:${i}`} className={`agent-step${step.pending ? " is-pending" : step.ok ? "" : " is-failed"}`}>
-            <span className="agent-step__mark" aria-hidden="true">
-              {step.pending ? <span className="agent-step__spinner" /> : step.ok ? <Check /> : "!"}
-            </span>
-            <span className="agent-step__label">
-              {step.pending ? `${WORKING[step.name] ?? "Working"}…` : <Markdown text={step.label} variant="note" />}
-            </span>
-            {!step.pending && step.blockId && doc.blocks.some((b) => b.id === step.blockId) && (
-              <button type="button" className="link-button agent-step__show" onClick={() => onShowBlock(step.blockId!)}>
-                Show
-              </button>
-            )}
-            {!step.pending && step.detail && (
-              <details className="agent-step__detail">
-                <summary>Details</summary>
-                <pre>{step.detail}</pre>
-              </details>
-            )}
-          </div>
-        ),
-      )}
-      {working && (
-        <div className="thinking">
-          <CollaboratorGlyph />
-          Working with {model ?? "the model"}
-          <span className="thinking__dots">
-            <span />
-            <span />
-            <span />
-          </span>
-        </div>
-      )}
-      {!streaming && (
-        <div className="agent-summary">
-          <span className="agent-summary__text">
-            {run.status === "stopped"
-              ? "Stopped. "
-              : run.status === "limit"
-                ? "Stopped after the most steps one reply may take. "
-                : run.status === "failed"
-                  ? "Stopped by an error. "
-                  : ""}
-            {run.undone
-              ? `${changes} ${changes === 1 ? "change" : "changes"} undone.`
-              : changes
-                ? `${changes} ${changes === 1 ? "change" : "changes"} to the document.`
-                : "Nothing in the document changed."}
-          </span>
-          {changes > 0 && !run.undone && (
-            <button type="button" className="text-button" onClick={onUndo}>
-              <Retry />
-              Undo {changes === 1 ? "it" : "all"}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function RevisionCard({
   message,
   thread,
   numbered,
   pin,
   actions,
+  onAccepted,
 }: {
   message: ThreadMessage;
   thread: Thread;
   numbered: NumberedBlock[];
   pin?: Pin;
   actions: CollaboratorActions;
+  onAccepted: (button: HTMLElement) => void;
 }) {
   const [compare, setCompare] = useState(true);
   const revision = message.revision!;
@@ -691,7 +664,7 @@ function RevisionCard({
   }
 
   return (
-    <div className="revision">
+    <Spotlight className="revision">
       <div className="revision__head">
         {pin ? <span className="pin pin--finding pin--inline">{pin.n}</span> : null}
         <span className="revision__title">Proposed revision</span>
@@ -719,7 +692,14 @@ function RevisionCard({
       )}
       {target && (
         <div className="revision__actions">
-          <button type="button" className="button button--primary button--small" onClick={() => actions.onAcceptRevision(thread.id, message.id)}>
+          <button
+            type="button"
+            className="button button--primary button--small"
+            onClick={(e) => {
+              onAccepted(e.currentTarget);
+              actions.onAcceptRevision(thread.id, message.id);
+            }}
+          >
             Accept
           </button>
           <button type="button" className="text-button" onClick={() => actions.onEditRevision(thread.id, message.id)}>
@@ -740,7 +720,7 @@ function RevisionCard({
           </button>
         </div>
       )}
-    </div>
+    </Spotlight>
   );
 }
 
@@ -761,6 +741,7 @@ function Composer({
   canAct,
   onSetAutoMode,
   dropped,
+  prefill,
   streaming,
   busyElsewhere,
   focusKey,
@@ -778,6 +759,8 @@ function Composer({
   canAct: boolean;
   onSetAutoMode: (auto: boolean) => void;
   dropped: { files: File[]; nonce: number } | null;
+  /** Text to put in the box, e.g. a suggestion picked in an empty thread. */
+  prefill: { text: string; nonce: number } | null;
   streaming: boolean;
   busyElsewhere: boolean;
   focusKey: number;
@@ -822,6 +805,12 @@ function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dropped]);
 
+  useEffect(() => {
+    if (!prefill) return;
+    setText(prefill.text);
+    input.current?.focus();
+  }, [prefill]);
+
   const remove = (file: PendingFile) => {
     setFiles((f) => f.filter((p) => p.id !== file.id));
     for (const name of file.attachment?.images ?? []) void api.deleteAsset(docId, name).catch(() => {});
@@ -851,7 +840,8 @@ function Composer({
 
   return (
     <div className="composer-wrap">
-      <div className={`composer${focused ? " is-focused" : ""}`}>
+      <div className={`composer${focused ? " is-focused" : ""}${autoMode && canAct && streaming ? " is-working" : ""}`}>
+        {autoMode && canAct && streaming && <ComposerBeam />}
         {files.length > 0 && (
           <div className="composer__files">
             {files.map((f) => (
@@ -929,7 +919,7 @@ function Composer({
               title="Auto: the collaborator works on the document itself, editing, checking proofs in Lean and drawing graphs, and you can undo all of it."
               onClick={() => onSetAutoMode(true)}
             >
-              Auto
+              {autoMode ? <AutoLabel /> : "Auto"}
             </button>
           </div>
           <input
