@@ -26,6 +26,29 @@ pub enum Role {
 pub struct ChatMessage {
     pub role: Role,
     pub content: String,
+    /// Images the message shows the model, as `data:image/…;base64,…` URLs: pages of an
+    /// imported paper, a photo of handwritten notes, an attached figure.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+}
+
+impl ChatMessage {
+    #[cfg(test)]
+    pub fn text(role: Role, content: &str) -> Self {
+        Self {
+            role,
+            content: content.into(),
+            images: Vec::new(),
+        }
+    }
+}
+
+/// The base64 payload of a `data:` URL, for APIs that take bare base64.
+pub fn data_url_base64(url: &str) -> &str {
+    match url.split_once(";base64,") {
+        Some((head, data)) if head.starts_with("data:") => data,
+        _ => url,
+    }
 }
 
 /// Incremental output sent to the frontend while a reply streams in.
@@ -50,6 +73,8 @@ pub struct ModelInfo {
     pub name: Option<String>,
     /// Short secondary text, e.g. parameter size and quantization.
     pub detail: Option<String>,
+    /// Whether the model reads images, when the provider says.
+    pub vision: Option<bool>,
 }
 
 /// Models offered by one provider, or why none are available.
@@ -111,6 +136,19 @@ mod tests {
         assert_eq!(
             error_from_body("Ollama", StatusCode::BAD_GATEWAY, ""),
             "Ollama returned 502 Bad Gateway"
+        );
+    }
+
+    #[test]
+    fn data_urls() {
+        assert_eq!(data_url_base64("data:image/png;base64,iVBOR"), "iVBOR");
+        assert_eq!(data_url_base64("iVBOR"), "iVBOR");
+        let message: ChatMessage =
+            serde_json::from_str(r#"{"role":"user","content":"hi"}"#).unwrap();
+        assert!(message.images.is_empty());
+        assert_eq!(
+            serde_json::to_string(&message).unwrap(),
+            r#"{"role":"user","content":"hi"}"#
         );
     }
 

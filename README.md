@@ -21,12 +21,15 @@ Mathematical work often happens across separate editors, chats, and proof assist
 - **Keep track of what's established.** Statements can be *open, tested, draft, adopted, proved,* or *verified*. Status indicators in the gutter and sidebar show where a proof stands.
 - **Reason alongside AI.** Highlight a step or work in one of four modes: **Explore**, **Find gaps**, **Challenge**, and **Formalize**. Feedback stays attached to its document context.
 - **Check proofs with Lean 4.** Generate Lean code using Mathlib, run **Check with Lean**, inspect errors or dependencies on `sorry`, and mark a step verified only when the checker accepts it under the app's checks.
+- **Bring in your research.** Import PDFs, photos of handwritten notes or a blackboard, LaTeX, Markdown, Word, HTML, Jupyter notebooks, CSV or code. A vision model transcribes them into statements with statuses, figures are copied straight from the PDF, and every paragraph links back to its page in the original.
+- **Graph in 2D and 3D.** `graph` and `graph3d` blocks put a graphing calculator in the document: curves, implicit curves, regions, polar and parametric plots, sliders you can play, surfaces and curves in space. The collaborator can draw them too.
+- **Show the collaborator anything.** Attach images, PDFs and files to a question, and paste screenshots straight into a paragraph.
 - **Stay in control of edits.** Proposed rewrites show the original and replacement; accept, edit, reject, or undo. AI messages are explicitly labeled **not verified**.
 - **Work locally.** Documents and threads are stored as files on your machine. Use a local Ollama model or connect a ChatGPT account.
 
 ## From an idea to a checked proof
 
-1. **Write a conjecture** or a draft argument using Markdown and LaTeX.
+1. **Write a conjecture** or a draft argument using Markdown and LaTeX, or import the paper or notes you already have.
 2. **Select a step** and use **Find gaps** or **Challenge** to pressure-test the reasoning.
 3. Choose **Formalize** to generate a candidate Lean 4 proof.
 4. Run **Check with Lean** against Mathlib. If Lean reports errors or `sorry`, send the diagnostic back to the collaborator.
@@ -41,6 +44,7 @@ This separates **exploration**, which AI can help accelerate, from **verificatio
 | Desktop and UI | [Tauri](https://tauri.app), Rust, React, TypeScript |
 | AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models |
 | Formal checking | Lean 4, Mathlib, `lake env lean`, theorem/axiom inspection |
+| Imports and graphs | pdf.js (text layer, rendering, figure detection), vision models, three.js, an expression language compiled without `eval` |
 | Documents | Local JSON files, autosave, per-document conversation threads |
 | Security-minded design | Encrypted sign-in credentials using an OS-keychain-backed key; AI edits require user approval |
 | Distribution | macOS (Apple silicon and Intel), Windows and Linux installers; GitHub Actions CI and signed automatic updates |
@@ -55,7 +59,7 @@ This separates **exploration**, which AI can help accelerate, from **verificatio
 
 **A real release pipeline.** CI runs interface and backend checks. App changes trigger cross-platform release builds and signed update artifacts; installed copies can offer a restart when an update is ready.
 
-For implementation details, source layout, and local data paths, see the [developer guide](docs/DEVELOPMENT.md). For release automation and signing, see the [release guide](docs/RELEASING.md).
+For how the pieces fit together and why, see the [architecture guide](architecture.md). For implementation details, source layout, and local data paths, see the [developer guide](docs/DEVELOPMENT.md). For release automation and signing, see the [release guide](docs/RELEASING.md).
 
 ## Download and setup
 
@@ -91,6 +95,7 @@ app/
   src-tauri/src/       Rust backend (ChatGPT, Ollama, Lean, storage)
 site/                  theoremis.com static site
 docs/                  screenshots, developer and release documentation
+architecture.md        how Theoremis works, and why it is built this way
 .github/workflows/     CI and cross-platform releases
 ```
 

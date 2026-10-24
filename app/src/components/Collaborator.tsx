@@ -1,8 +1,13 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useContext, useEffect, useRef, useState, type ClipboardEvent } from "react";
+import { createPortal } from "react-dom";
+import { api, assetUrl, errorMessage } from "../lib/api";
+import { readAttachment } from "../lib/attachments";
 import { MODE_LABELS } from "../lib/prompts";
+import { ACCEPTED_FILES } from "../lib/sources";
 import { clockTime, initials, timeAgo } from "../lib/text";
 import {
   PROVIDER_LABELS,
+  type Attachment,
   type Context,
   type Doc,
   type Mode,
@@ -25,6 +30,7 @@ import {
   CollaboratorGlyph,
   Compare,
   Copy,
+  ImportFile,
   PanelRight,
   PlusLarge,
   Retry,
@@ -32,13 +38,13 @@ import {
   StopSquare,
 } from "./Icons";
 import { LeanCheckPanel } from "./LeanCheck";
-import { Markdown, type CodeFooter } from "./Markdown";
+import { Markdown, MediaContext, type CodeFooter } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
 
 const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
 
 export interface CollaboratorActions {
-  onSend: (mode: Mode, text: string) => void;
+  onSend: (mode: Mode, text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   onRetry: (threadId: string) => void;
   onNewThread: () => void;
@@ -70,6 +76,10 @@ interface Props extends CollaboratorActions {
   modelsLoading: boolean;
   model: ModelRef | null;
   hasModel: boolean;
+  /** Whether the chosen model sees images. */
+  vision: boolean;
+  /** Files dropped on the window to attach to the next question. */
+  dropped: { files: File[]; nonce: number } | null;
   streamingMessageId: string | null;
   busyElsewhere: boolean;
   displayName: string;
@@ -191,9 +201,12 @@ export function Collaborator(props: Props) {
       </div>
 
       <Composer
+        docId={props.doc.id}
         context={context}
         numbered={props.numbered}
         hasModel={props.hasModel}
+        vision={props.vision}
+        dropped={props.dropped}
         streaming={!!streamingMessageId}
         busyElsewhere={props.busyElsewhere}
         focusKey={props.focusKey}
@@ -280,12 +293,59 @@ const UserMessage = memo(function UserMessage({
           </span>
         </button>
       )}
-      <div className="msg__question">
-        <Markdown text={message.content} variant="question" />
-      </div>
+      {message.attachments && message.attachments.length > 0 && <AttachmentList attachments={message.attachments} />}
+      {message.content.trim() && (
+        <div className="msg__question">
+          <Markdown text={message.content} variant="question" />
+        </div>
+      )}
     </section>
   );
 });
+
+/** What a question was sent with: pictures as thumbnails, other files by name. */
+function AttachmentList({ attachments }: { attachments: Attachment[] }) {
+  const docId = useContext(MediaContext);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  if (!docId) return null;
+  return (
+    <div className="attachments">
+      {attachments.map((a, i) =>
+        a.kind === "image" && a.images[0] ? (
+          <button key={i} type="button" className="attachment attachment--image" title={a.name} onClick={() => setOpen(a.images[0])}>
+            <img src={assetUrl(docId, a.images[0])} alt={a.name} />
+          </button>
+        ) : (
+          <button
+            key={i}
+            type="button"
+            className="attachment attachment--file"
+            title={a.name}
+            disabled={!a.images[0]}
+            onClick={() => a.images[0] && setOpen(a.images[0])}
+          >
+            {a.images[0] ? <img src={assetUrl(docId, a.images[0])} alt="" /> : <ImportFile size={13} />}
+            <span className="attachment__name">{a.name}</span>
+            <span className="attachment__meta">{a.kind === "pdf" ? `${a.pages} ${a.pages === 1 ? "page" : "pages"}` : "text"}</span>
+          </button>
+        ),
+      )}
+      {open &&
+        createPortal(
+          <div className="dialog-backdrop lightbox" onClick={() => setOpen(null)}>
+            <img src={assetUrl(docId, open)} alt="" />
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
 
 function AssistantMessage({
   message,
@@ -557,10 +617,20 @@ function RevisionCard({
   );
 }
 
+interface PendingFile {
+  id: number;
+  name: string;
+  attachment?: Attachment;
+  error?: string;
+}
+
 function Composer({
+  docId,
   context,
   numbered,
   hasModel,
+  vision,
+  dropped,
   streaming,
   busyElsewhere,
   focusKey,
@@ -569,13 +639,16 @@ function Composer({
   onSetContext,
   shortcut,
 }: {
+  docId: string;
   context: Context | null;
   numbered: NumberedBlock[];
   hasModel: boolean;
+  vision: boolean;
+  dropped: { files: File[]; nonce: number } | null;
   streaming: boolean;
   busyElsewhere: boolean;
   focusKey: number;
-  onSend: (mode: Mode, text: string) => void;
+  onSend: (mode: Mode, text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   onSetContext: (context: Context | null) => void;
   shortcut: (keys: string) => string;
@@ -583,26 +656,86 @@ function Composer({
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [files, setFiles] = useState<PendingFile[]>([]);
   const input = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const nextId = useRef(0);
 
   useEffect(() => {
     if (focusKey > 0) input.current?.focus();
   }, [focusKey]);
 
-  const blocked = !hasModel || streaming || busyElsewhere;
+  // Attachments belong to the document they were read into.
+  useEffect(() => setFiles([]), [docId]);
+
+  const attach = (list: File[]) => {
+    for (const file of list) {
+      const id = nextId.current++;
+      setFiles((f) => [...f, { id, name: file.name || "Pasted image" }]);
+      readAttachment(docId, file).then(
+        (attachment) => setFiles((f) => f.map((p) => (p.id === id ? { ...p, attachment } : p))),
+        (err) => setFiles((f) => f.map((p) => (p.id === id ? { ...p, error: errorMessage(err) } : p))),
+      );
+    }
+    input.current?.focus();
+  };
+
+  const lastDrop = useRef(0);
+  useEffect(() => {
+    if (dropped && dropped.nonce !== lastDrop.current) {
+      lastDrop.current = dropped.nonce;
+      attach(dropped.files);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropped]);
+
+  const remove = (file: PendingFile) => {
+    setFiles((f) => f.filter((p) => p.id !== file.id));
+    for (const name of file.attachment?.images ?? []) void api.deleteAsset(docId, name).catch(() => {});
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = [...e.clipboardData.files];
+    if (!pasted.length) return;
+    e.preventDefault();
+    attach(pasted);
+  };
+
+  const reading = files.some((f) => !f.attachment && !f.error);
+  const ready = files.flatMap((f) => (f.attachment ? [f.attachment] : []));
+  const blocked = !hasModel || streaming || busyElsewhere || reading;
   const send = (mode: Mode) => {
     if (blocked) return;
-    if (mode === "ask" && !text.trim()) return;
-    if (mode !== "ask" && !text.trim() && !context) return;
-    onSend(mode, text);
+    if (mode === "ask" && !text.trim() && !ready.length) return;
+    if (mode !== "ask" && !text.trim() && !context && !ready.length) return;
+    onSend(mode, text, ready);
     setText("");
+    setFiles([]);
   };
+  const unseen = !vision && ready.some((a) => a.images.length > 0);
 
   const choices = numbered.filter((n) => !n.block.suggestion && n.block.source.trim());
 
   return (
     <div className="composer-wrap">
       <div className={`composer${focused ? " is-focused" : ""}`}>
+        {files.length > 0 && (
+          <div className="composer__files">
+            {files.map((f) => (
+              <span key={f.id} className={`file-chip${f.error ? " is-failed" : ""}${!f.attachment && !f.error ? " is-reading" : ""}`} title={f.error ?? f.name}>
+                {f.attachment?.images[0] ? <img src={assetUrl(docId, f.attachment.images[0])} alt="" /> : <ImportFile size={12} />}
+                <span className="file-chip__name">{f.name}</span>
+                <span className="file-chip__meta">
+                  {f.error ? "Couldn’t read" : !f.attachment ? "Reading…" : f.attachment.kind === "pdf" ? `${f.attachment.pages} pp.` : f.attachment.kind === "image" ? "Image" : "Text"}
+                </span>
+                <button type="button" aria-label={`Remove ${f.name}`} onClick={() => remove(f)}>
+                  <Close size={9} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {unseen && <p className="composer__warning">This model can’t see images, so only the text Theoremis reads from these files is sent. Choose a vision model to show it the pictures.</p>}
         <div className="composer__chips">
           {context && (
             <span className="chip chip--context">
@@ -638,6 +771,20 @@ function Composer({
               </div>
             )}
           </div>
+          <button type="button" className="chip chip--add" title="Attach images, PDFs or files" onClick={() => fileInput.current?.click()}>
+            + File
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            accept={ACCEPTED_FILES}
+            onChange={(e) => {
+              attach([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
         </div>
         <AutoTextarea
           ref={input}
@@ -654,6 +801,7 @@ function Composer({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -668,7 +816,7 @@ function Composer({
                 key={mode}
                 type="button"
                 className="chip-button"
-                disabled={blocked || (!text.trim() && !context)}
+                disabled={blocked || (!text.trim() && !context && !ready.length)}
                 title={context || text.trim() ? undefined : "Select a step or type a question first"}
                 onClick={() => send(mode)}
               >
@@ -686,7 +834,7 @@ function Composer({
               className="send"
               title={`Send  ${shortcut("↵")}`}
               aria-label="Send"
-              disabled={blocked || !text.trim()}
+              disabled={blocked || (!text.trim() && !ready.length)}
               onClick={() => send("ask")}
             >
               <ArrowUp />

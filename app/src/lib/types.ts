@@ -14,6 +14,8 @@ export interface ModelInfo {
   /** A friendlier display name, when the provider has one. */
   name: string | null;
   detail: string | null;
+  /** Whether the model reads images, when the provider says. */
+  vision: boolean | null;
 }
 
 export interface ProviderStatus {
@@ -44,9 +46,16 @@ export interface SettingsUpdate {
 export interface ChatMessage {
   role: Role;
   content: string;
+  /** `data:image/…;base64,…` URLs shown to the model with the text. */
+  images?: string[];
 }
 
 export type StreamEvent = { type: "delta"; text: string } | { type: "reasoning"; text: string };
+
+/** Whether a model reads images: ChatGPT models unless they say not, Ollama models that say so. */
+export function readsImages(info: ModelInfo | null | undefined): boolean {
+  return !!info && (info.provider === "chatgpt" ? info.vision !== false : info.vision === true);
+}
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
   ollama: "Ollama",
@@ -85,6 +94,8 @@ export interface Block {
   note?: string;
   /** Set while the block is a collaborator suggestion awaiting a decision. */
   suggestion?: { threadId: string; messageId: string };
+  /** The page of the imported original this block was transcribed from. */
+  page?: number;
 }
 
 export type Mode = "ask" | "explore" | "gaps" | "challenge" | "formalize";
@@ -112,7 +123,21 @@ export interface ThreadMessage {
   revision?: Revision;
   /** Lean's verdicts on the reply's Lean code, one per code block checked. */
   leanChecks?: StoredLeanCheck[];
+  /** Files sent with a question. */
+  attachments?: Attachment[];
   createdAt: number;
+}
+
+export interface Attachment {
+  /** The file's name as attached. */
+  name: string;
+  kind: "image" | "pdf" | "text";
+  /** Media of the document shown to the model: the image, or a PDF's first pages. */
+  images: string[];
+  /** What the model reads: a PDF's text layer, or the file as text. */
+  text?: string;
+  /** A PDF's page count. */
+  pages?: number;
 }
 
 export interface Revision {
@@ -131,6 +156,25 @@ export interface Thread {
   messages: ThreadMessage[];
 }
 
+/** What a document was transcribed from: a paper, photos of notes, a LaTeX source. */
+export interface DocOrigin {
+  kind: "pdf" | "images" | "text";
+  /** The original file names, as uploaded. */
+  names: string[];
+  /** The originals, kept with the document's media; for `images`, one file per page. */
+  files: string[];
+  /** Pages (or, for text, parts) in the original. */
+  pages: number;
+  /** The first and last page chosen for transcription. */
+  from: number;
+  to: number;
+  /** Pages transcribed so far; less than `to` while an import is unfinished. */
+  done: number;
+  /** Who transcribed it; none when imported without the collaborator. */
+  model?: ModelRef;
+  importedAt: number;
+}
+
 export interface Doc {
   id: string;
   projectId: string;
@@ -146,6 +190,8 @@ export interface Doc {
   /** Derived on save so the sidebar can show it without loading every document. */
   status: Status;
   pending: number;
+  /** Set when the document was imported from a file. */
+  origin?: DocOrigin;
 }
 
 export interface Project {

@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   ChatGptSession,
   ChatMessage,
@@ -82,7 +82,17 @@ export const api = {
   loadDocument: (id: string) => invoke<Doc>("load_document", { id }),
   saveDocument: (document: Doc) => invoke<DocumentSummary>("save_document", { document }),
   deleteDocument: (id: string) => invoke<void>("delete_document", { id }),
+
+  /** Keeps a file with a document's media under `name`, an id plus extension such as `3f2a….png`. */
+  saveAsset: (documentId: string, name: string, bytes: Uint8Array) =>
+    invoke<string>("save_asset", bytes, { headers: { "x-document": documentId, "x-name": name } }),
+  deleteAsset: (documentId: string, name: string) => invoke<void>("delete_asset", { document: documentId, name }),
 };
+
+/** Where the webview loads a document's media from (the `theoremis` URI scheme). */
+export function assetUrl(documentId: string, name: string): string {
+  return convertFileSrc(`${documentId}/${name}`, "theoremis");
+}
 
 /** Tauri rejects with the serialized `AppError` string; anything else is unexpected. */
 export function errorMessage(err: unknown): string {

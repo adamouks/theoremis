@@ -6,7 +6,9 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::lines::{Flow, for_each_line};
-use super::{ChatMessage, ModelInfo, Provider, ProviderStatus, StreamEvent, error_from_body};
+use super::{
+    ChatMessage, ModelInfo, Provider, ProviderStatus, StreamEvent, data_url_base64, error_from_body,
+};
 use crate::error::{AppError, AppResult};
 
 const LIST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -70,7 +72,38 @@ async fn fetch_models(client: &reqwest::Client, base_url: &str) -> AppResult<Vec
         return Err(AppError::msg(error_from_body("Ollama", status, &body)));
     }
     let tags: TagsResponse = response.json().await?;
-    Ok(models_from_tags(tags))
+    let mut models = models_from_tags(tags);
+    let capabilities = futures_util::future::join_all(
+        models.iter().map(|m| fetch_vision(client, base_url, &m.id)),
+    )
+    .await;
+    for (model, vision) in models.iter_mut().zip(capabilities) {
+        model.vision = vision;
+    }
+    Ok(models)
+}
+
+#[derive(Deserialize)]
+struct ShowResponse {
+    #[serde(default)]
+    capabilities: Option<Vec<String>>,
+}
+
+/// Whether a model reads images, from `/api/show`. Older Ollama versions don't say.
+async fn fetch_vision(client: &reqwest::Client, base_url: &str, model: &str) -> Option<bool> {
+    let response = client
+        .post(format!("{base_url}/api/show"))
+        .json(&json!({ "model": model }))
+        .timeout(LIST_TIMEOUT)
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let show: ShowResponse = response.json().await.ok()?;
+    show.capabilities
+        .map(|caps| caps.iter().any(|c| c == "vision"))
 }
 
 fn models_from_tags(tags: TagsResponse) -> Vec<ModelInfo> {
@@ -93,6 +126,7 @@ fn models_from_tags(tags: TagsResponse) -> Vec<ModelInfo> {
                 id: m.name,
                 name: None,
                 detail,
+                vision: None,
             }
         })
         .collect();
@@ -109,7 +143,7 @@ pub async fn stream_chat(
 ) -> AppResult<()> {
     let response = client
         .post(format!("{base_url}/api/chat"))
-        .json(&json!({ "model": model, "messages": messages, "stream": true }))
+        .json(&request_body(model, messages))
         .send()
         .await
         .map_err(|err| request_error(err, base_url))?;
@@ -138,6 +172,41 @@ pub async fn stream_chat(
             "Ollama closed the connection before finishing the reply.",
         ))
     }
+}
+
+/// Ollama's default context (2–4k tokens, depending on the version) silently cuts long
+/// prompts, such as pages of a paper. Requests that won't fit get a larger window, in a few
+/// steps so the model is reloaded rarely.
+fn context_window(messages: &[ChatMessage]) -> Option<u32> {
+    let chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
+    let images: usize = messages.iter().map(|m| m.images.len()).sum();
+    // About three characters a token for prose and LaTeX; images cost roughly a page of text.
+    let estimate = chars / 3 + images * 1500 + 2048;
+    match estimate {
+        0..=3500 => None,
+        3501..=7000 => Some(8192),
+        7001..=14000 => Some(16384),
+        _ => Some(32768),
+    }
+}
+
+/// Ollama takes images as bare base64 next to the text.
+fn request_body(model: &str, messages: &[ChatMessage]) -> serde_json::Value {
+    let wire: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|m| {
+            let mut message = json!({ "role": m.role, "content": m.content });
+            if !m.images.is_empty() {
+                message["images"] = m.images.iter().map(|i| data_url_base64(i)).collect();
+            }
+            message
+        })
+        .collect();
+    let mut body = json!({ "model": model, "messages": wire, "stream": true });
+    if let Some(num_ctx) = context_window(messages) {
+        body["options"] = json!({ "num_ctx": num_ctx });
+    }
+    body
 }
 
 #[derive(Deserialize)]
@@ -213,6 +282,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: Role::User,
             content: "Prove √2 is irrational".into(),
+            images: vec!["data:image/png;base64,iVBOR".into()],
         }];
         let mut events = Vec::new();
         stream_chat(&client(), &url, "qwen3:8b", &messages, |e| events.push(e))
@@ -236,6 +306,7 @@ mod tests {
         assert_eq!(body["model"], "qwen3:8b");
         assert_eq!(body["stream"], true);
         assert_eq!(body["messages"][0]["role"], "user");
+        assert_eq!(body["messages"][0]["images"][0], "iVBOR");
     }
 
     #[tokio::test]
@@ -308,6 +379,20 @@ mod tests {
         let err = parse_line(r#"{"error":"model requires more system memory"}"#).unwrap_err();
         assert_eq!(err.to_string(), "Ollama: model requires more system memory");
         assert!(parse_line("   ").unwrap().0.is_empty());
+    }
+
+    #[test]
+    fn sizes_the_context_to_the_request() {
+        let short = [ChatMessage::text(Role::User, "Prove it.")];
+        assert_eq!(request_body("m", &short).get("options"), None);
+        let pages = [ChatMessage {
+            role: Role::User,
+            content: "x".repeat(9000),
+            images: vec!["data:image/jpeg;base64,AAAA".into(); 3],
+        }];
+        let body = request_body("m", &pages);
+        assert_eq!(body["options"]["num_ctx"], 16384);
+        assert_eq!(body["messages"][0]["images"][2], "AAAA");
     }
 
     #[test]

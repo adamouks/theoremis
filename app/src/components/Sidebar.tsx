@@ -2,7 +2,7 @@ import { useState } from "react";
 import { initials } from "../lib/text";
 import type { DocumentSummary, Project } from "../lib/types";
 import type { UpdateStatus } from "../lib/useUpdates";
-import { ChevronDown, ChevronRight, Gear, Plus, Search, StatusGlyph, Trash } from "./Icons";
+import { ChevronDown, ChevronRight, Gear, ImportFile, Plus, Search, StatusGlyph, Trash } from "./Icons";
 import { STATUS_INFO } from "../lib/doc";
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
   onOpen: (id: string) => void;
   onNewDocument: (projectId?: string) => void;
   onNewProject: () => Promise<Project>;
+  onImport: () => void;
   onToggleProject: (project: Project) => void;
   onRenameProject: (project: Project, name: string) => void;
   onDeleteProject: (project: Project) => void;
@@ -34,6 +35,7 @@ export function Sidebar({
   onOpen,
   onNewDocument,
   onNewProject,
+  onImport,
   onToggleProject,
   onRenameProject,
   onDeleteProject,
@@ -210,6 +212,13 @@ export function Sidebar({
           </span>
           <span>New document</span>
           <kbd>{shortcut("N")}</kbd>
+        </button>
+        <button type="button" className="sidebar__row" onClick={onImport} title="Transcribe a paper, photos of notes, LaTeX, Markdown, Word…">
+          <span className="dashed-plus dashed-plus--plain">
+            <ImportFile size={11} />
+          </span>
+          <span>Import</span>
+          <kbd>{shortcut("O")}</kbd>
         </button>
         <button type="button" className="sidebar__row sidebar__row--user" onClick={onSettings}>
           {displayName ? <span className="avatar">{initials(displayName)}</span> : <Gear />}

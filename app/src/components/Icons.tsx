@@ -54,6 +54,31 @@ export const Plus = (p: IconProps) => (
   </Icon>
 );
 
+/** A page with an arrow into it: importing a file. */
+export const ImportFile = (p: IconProps) => (
+  <Icon size={12} viewBox="0 0 12 12" {...p}>
+    <path d="M7 1.75H3.25a.75.75 0 0 0-.75.75v7a.75.75 0 0 0 .75.75h5.5a.75.75 0 0 0 .75-.75V4.25L7 1.75Z" />
+    <path d="M6 5v3.25M4.75 7 6 8.25 7.25 7" />
+  </Icon>
+);
+
+/** A picture: a frame with a hill and a sun. */
+export const Picture = (p: IconProps) => (
+  <Icon size={12} viewBox="0 0 12 12" {...p}>
+    <rect x="1.75" y="2.5" width="8.5" height="7" rx="0.9" />
+    <path d="m2.25 8.5 2.5-2.5 1.75 1.75 1.25-1.25 2 2" />
+    <circle cx="7.75" cy="4.75" r="0.75" />
+  </Icon>
+);
+
+/** A small chart: axes and a curve, for graphs. */
+export const GraphIcon = (p: IconProps) => (
+  <Icon size={12} viewBox="0 0 12 12" {...p}>
+    <path d="M2 1.75v8.5h8.25" />
+    <path d="M3.25 8.5c1.5-.25 2-5.75 3.5-5.75S8.5 6 10 5.5" />
+  </Icon>
+);
+
 export const PlusLarge = (p: IconProps) => (
   <Icon {...p}>
     <path d="M7 3v8M3 7h8" />

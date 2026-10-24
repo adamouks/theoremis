@@ -45,24 +45,36 @@ Build artifacts are placed under `app/src-tauri/target/release/bundle/`. See [RE
 
 ## Architecture
 
+[architecture.md](../architecture.md) explains how the pieces fit together and why. The source layout:
+
 ```text
 app/src/                      React + TypeScript interface
-  components/                 Sidebar, document, blocks, collaborator, settings, palette
+  components/                 Sidebar, document, blocks, collaborator, settings, palette, imports
+  components/graph/           Graph blocks: the plane (canvas), space (three.js), expression list
   lib/doc.ts                  Statuses, equation numbering, block labels, proposals
   lib/prompts.ts              Collaborator modes and requests to the model
   lib/useWorkspace.ts         Projects, documents, autosave
   lib/useCollaborator.ts      Thread streaming, revisions, suggestions
+  lib/attachments.ts          Files sent with a question: page images and text
+  lib/sources.ts              Reading imports: PDFs, photos, LaTeX, Markdown, Word, HTML, …
+  lib/pdf.ts, figures.ts      pdf.js pages and text; finding figures in what a page draws
+  lib/importDoc.ts            A source into a document, with or without a model
+  lib/useImport.ts            Running imports part by part, with progress and resume
+  lib/transcript.ts           The line format models transcribe into, read as it streams
+  lib/convert.ts, docx.ts     Direct conversion of LaTeX, Markdown, Word, notebooks, tables
+  lib/graph/                  Expression language, graph specs, 2D and 3D geometry
 app/src-tauri/src/            Rust backend
-  lib.rs                      Tauri commands and application state
+  lib.rs                      Tauri commands, the theoremis:// media scheme, application state
   chatgpt/
     oauth.rs                  OIDC discovery, PKCE, callback, refresh, ID-token handling
     vault.rs                  Encrypted credentials backed by the OS keychain
-    api.rs                    Model catalog and streaming Responses
+    api.rs                    Model catalog and streaming Responses (text and images)
   lean/mod.rs                 Lean/Mathlib setup and checks
   lean/check.rs               Input screening, theorem/axiom inspection, verdict parsing
-  providers/ollama.rs         Ollama tags and streamed chat
+  providers/mod.rs            Chat messages (with images) shared by the providers
+  providers/ollama.rs         Ollama tags, vision capability, streamed chat
   settings.rs                 Settings persistence
-  storage.rs                  Project/document files
+  storage.rs                  Project/document files and their media
 ```
 
 Desktop-app network requests run in the Rust backend, keeping credentials out of the webview and avoiding browser CORS restrictions. Model output streams to React over a Tauri channel; cancellation drops the underlying HTTP request.
@@ -97,12 +109,55 @@ The check refuses code involving `#eval`, `run_cmd`, custom elaborators/macros/s
 
 AI-generated reasoning is always labeled *not verified* until a separately checked proof meets the app's verification criteria.
 
+## Importing research
+
+**Import** in the sidebar (`⌘O`), or drop files on the window. Theoremis reads:
+
+| Files | How |
+| --- | --- |
+| PDF | Each page's text layer and image. Figures are found from what the page draws (vector paths and images), cropped from the page, and kept with the document |
+| Photos and scans (PNG, JPEG, HEIC, …) | Read by a vision model; figures it marks are cropped from the photo |
+| LaTeX, Markdown, plain text | Theorems, proofs and equations become statements; `\includegraphics` picks up images dropped alongside |
+| Word (`.docx`), HTML, Jupyter, CSV, code | Converted directly, keeping equations (Word's included), tables and images |
+
+With a model, the transcript streams into the document part by part; a failed part can be
+continued later from where it stopped. Pick a vision model (any ChatGPT model, or one like
+`qwen2.5vl` or `gemma3` in Ollama) for PDFs and photos. Without one, Theoremis lays out the text
+layer itself. Imported paragraphs show their page in the gutter, and the original opens beside it.
+
+## Graphs
+
+Add a graph from the bar under the document, or write a fence. One expression per line, in LaTeX
+or plain notation:
+
+````md
+```graph
+y = a \sin(bx)                 % a curve
+a = 1 [0, 3]                   % sliders, with their ranges
+b = 2
+f(x) = x^2 - 2                 % a function, usable as f(x) and f'(x)
+x^2 + y^2 = 4 ; dashed         % an implicit curve
+y < f(x)                       % a shaded region
+r = 1 + \cos\theta             % polar
+(\cos t, \sin 2t) [0, 2\pi]    % parametric, with the range of t
+(1, 2), (3, 4) ; label=P       % points
+view x=[-5, 5] y=[-3, 3]
+```
+````
+
+`graph3d` takes `z = f(x, y)`, implicit surfaces such as `x^2 + y^2 + z^2 = 9`, curves
+`(\cos t, \sin t, t/4) [0, 4\pi]`, surfaces `(x(u,v), y(u,v), z(u,v)) [u0, u1, v0, v1]` and
+points. A name that isn't defined yet gets an **Add a slider** button. Options follow semicolons: `color=#e64980`, `dashed`, `hidden`, `label=…`, `width=…`,
+`opacity=…`. Drag to pan (or turn, in 3D), scroll to zoom, and edit expressions in the list below
+the graph; changes are written back to the fence.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | `⌘K` | Search documents and commands |
 | `⌘N` | New document |
+| `⌘O` | Import files (or drop them on the window) |
 | `⌘L` | Ask about the selected step |
 | `⌘.` or `Esc` | Focus mode |
 | `⌘\` | Toggle collaborator |
@@ -119,6 +174,7 @@ Use `Ctrl` in place of `⌘` on Windows and Linux.
 | ChatGPT sign-in | Encrypted `chatgpt.json` in app config; key in system keychain |
 | Projects | `workspace/projects.json` in app data |
 | Documents and threads | Individual JSON files in `workspace/documents/` |
+| Images, figures, attachments, imported originals | `workspace/assets/<document id>/`, removed with the document |
 | Mathlib project | `lean/TheoremisMath` in app data (`~/.elan` for Lean) |
 
 The app ID is `app.theoremis.desktop`. Typical base directories: `~/Library/Application Support/app.theoremis.desktop` on macOS; `~/.config/app.theoremis.desktop` and `~/.local/share/app.theoremis.desktop` on Linux; `%APPDATA%\app.theoremis.desktop` on Windows.
