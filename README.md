@@ -104,7 +104,6 @@ architecture.md        how Theoremis works, and why it is built this way
 
 ## Roadmap
 
-- More model providers, including OpenRouter and Poe
 - Update Mathlib from inside the app
 - Document cross-references that renumber automatically
 - Official macOS Developer ID and Windows release signing
