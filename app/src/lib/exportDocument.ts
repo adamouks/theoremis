@@ -1,9 +1,10 @@
-// Exporting a document: its LaTeX source (lib/latexExport.ts), with its figures and graphs as
-// files beside it in a ZIP when it has any, saved where the person chooses.
+// Exporting a document: its LaTeX source (lib/latexExport.ts), with its figures, graphs and
+// references as files beside it in a ZIP when it has any, saved where the person chooses.
 
 import { graphPicture } from "../components/graph/graphPicture";
 import { api, assetUrl } from "./api";
 import { documentToLatex, exportName } from "./latexExport";
+import { macroSource, readMacros } from "./macros";
 import type { Doc } from "./types";
 import { zip } from "./zip";
 
@@ -21,16 +22,22 @@ export async function exportLatex(doc: Doc, author: string): Promise<string | nu
       if (picture) pictures.set(`${dim}:${code}`, picture);
     }
   }
+  const bibliography = doc.bibliography?.trim() ?? "";
   const { tex, figures } = documentToLatex(doc, {
     author,
+    macros: macroSource(readMacros(doc.macros)),
+    bibliography: bibliography ? "references" : undefined,
     pictured: (code, dim) => pictures.has(`${dim}:${code}`),
     date: new Date(),
   });
   const base = exportName(doc.title);
   const source = new TextEncoder().encode(tex);
-  if (!figures.length) return api.saveFile(`${base}.tex`, "LaTeX source", source);
+  // The references go beside the source only when it cites them.
+  const cites = bibliography && tex.includes("\\bibliography{references}");
+  if (!figures.length && !cites) return api.saveFile(`${base}.tex`, "LaTeX source", source);
 
   const files: { name: string; data: Uint8Array }[] = [{ name: `${base}.tex`, data: source }];
+  if (cites) files.push({ name: "references.bib", data: new TextEncoder().encode(`${bibliography}\n`) });
   for (const figure of figures) {
     const data =
       "graph" in figure.from

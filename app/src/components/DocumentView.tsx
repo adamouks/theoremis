@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { documentAsText, type NumberedBlock } from "../lib/doc";
+import type { CitedReference } from "../lib/notation";
 import { MODE_LABELS } from "../lib/prompts";
 import { newId, timeAgo } from "../lib/text";
 import type { Block, Doc, Mode, Status } from "../lib/types";
@@ -32,6 +33,10 @@ interface Props {
   /** Saves the document as LaTeX, and opens the print dialog (which can save a PDF). */
   onExport: () => void;
   onPrint: () => void;
+  /** Opens the document's macros and references. */
+  onEditNotation: () => void;
+  /** The references the document cites, listed at its end. */
+  references: CitedReference[];
   onAsk: (blockId: string, mode: Mode) => void;
   onAcceptSuggestion: (blockId: string) => void;
   onRejectSuggestion: (blockId: string) => void;
@@ -63,6 +68,8 @@ export function DocumentView({
   onDelete,
   onExport,
   onPrint,
+  onEditNotation,
+  references,
   onAsk,
   onAcceptSuggestion,
   onRejectSuggestion,
@@ -294,6 +301,18 @@ export function DocumentView({
                   className="menu__item"
                   onClick={() => {
                     setMenuOpen(false);
+                    onEditNotation();
+                  }}
+                >
+                  <span className="menu__spacer" />
+                  Macros and references…
+                </button>
+                <div className="menu__divider" />
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuOpen(false);
                     onExport();
                   }}
                 >
@@ -406,6 +425,27 @@ export function DocumentView({
               />
             ))}
           </div>
+
+          {references.length > 0 && (
+            <div className="doc-row">
+              <div />
+              <section className="doc-references" aria-label="References">
+                <h2 className="doc-references__title">References</h2>
+                <ol>
+                  {references.map((r) => (
+                    <li key={r.key}>
+                      <span className="doc-references__number">[{r.number}]</span>
+                      <Markdown text={r.text} variant="doc" />
+                    </li>
+                  ))}
+                </ol>
+                <button type="button" className="link-button" onClick={onEditNotation}>
+                  Edit references
+                </button>
+              </section>
+              <div />
+            </div>
+          )}
 
           <div className="doc-row">
             <div />

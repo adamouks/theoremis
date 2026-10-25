@@ -325,6 +325,10 @@ export interface Doc {
   pending: number;
   /** Set when the document was imported from a file. */
   origin?: DocOrigin;
+  /** The document's LaTeX macros: \newcommand, \DeclareMathOperator… (lib/macros.ts). */
+  macros?: string;
+  /** Its references, as BibTeX, cited with \cite{key} (lib/bibtex.ts). */
+  bibliography?: string;
 }
 
 export interface Project {

@@ -1,7 +1,7 @@
 const CODE_SPANS = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g;
 
 /** Applies `fn` to the parts of `markdown` outside code spans and fences. */
-function outsideCode(markdown: string, fn: (text: string) => string): string {
+export function outsideCode(markdown: string, fn: (text: string) => string): string {
   return markdown
     .split(CODE_SPANS)
     .map((segment, index) => (index % 2 === 1 ? segment : fn(segment)))

@@ -2,6 +2,7 @@ mod chatgpt;
 mod error;
 mod lean;
 mod providers;
+mod references;
 mod settings;
 mod storage;
 
@@ -326,6 +327,12 @@ async fn save_file(
     Ok(Some(path.display().to_string()))
 }
 
+/// BibTeX for an arXiv id or a DOI, looked up on arXiv or doi.org.
+#[tauri::command]
+async fn lookup_reference(state: tauri::State<'_, AppState>, text: String) -> AppResult<String> {
+    references::lookup(&state.http, &text).await
+}
+
 /// Opens the system's print dialog for the page, which can also save it as a PDF.
 #[tauri::command]
 fn print_page(webview: tauri::Webview) -> AppResult<()> {
@@ -440,6 +447,7 @@ pub fn run() {
             delete_asset,
             save_file,
             print_page,
+            lookup_reference,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Theoremis");

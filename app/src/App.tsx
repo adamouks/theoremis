@@ -7,7 +7,8 @@ import { DropOverlay } from "./components/DropOverlay";
 import { ImportBanner } from "./components/ImportBanner";
 import { ImportDialog } from "./components/ImportDialog";
 import { Close } from "./components/Icons";
-import { MediaContext } from "./components/Markdown";
+import { MediaContext, NotationContext, type Notation } from "./components/Markdown";
+import { NotationDialog } from "./components/NotationDialog";
 import { PrintDocument } from "./components/PrintDocument";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -15,7 +16,9 @@ import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "./lib/api";
+import { formatEntry } from "./lib/bibtex";
 import { exportLatex } from "./lib/exportDocument";
+import { citationSignature, citedReferences, readNotation } from "./lib/notation";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { effortKey, resolveEffort } from "./lib/effort";
 import { MODE_LABELS } from "./lib/prompts";
@@ -309,6 +312,25 @@ export default function App() {
     [workspace],
   );
 
+  // The document's macros and references, for its math, its citations and its references list.
+  const [notationOpen, setNotationOpen] = useState<"macros" | "references" | null>(null);
+  const read = useMemo(() => readNotation({ macros: doc?.macros, bibliography: doc?.bibliography }), [doc?.macros, doc?.bibliography]);
+  const blocks = doc?.blocks;
+  const signature = useMemo(() => (blocks ? citationSignature({ blocks }) : ""), [blocks]);
+  const references = useMemo(() => citedReferences(read.bibliography, signature), [read, signature]);
+  const notation = useMemo<Notation>(() => {
+    const numbers = new Map(references.map((r) => [r.key, r.number]));
+    const entries = new Map(read.bibliography.entries.map((e) => [e.key, e]));
+    return {
+      macros: read.macros.katex,
+      number: (key) => numbers.get(key),
+      describe: (key) => {
+        const entry = entries.get(key);
+        return entry && formatEntry(entry).replace(/\*+/g, "");
+      },
+    };
+  }, [read, references]);
+
   // Export and print. Where an export went is said for a few seconds, with a way to it.
   const [notice, setNotice] = useState<{ text: string; path?: string; error?: boolean } | null>(null);
   useEffect(() => {
@@ -412,6 +434,7 @@ export default function App() {
     ...(doc
       ? [
           { id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") },
+          { id: "notation", label: "Macros and references…", run: () => setNotationOpen("macros") },
           { id: "export-latex", label: "Export as LaTeX…", hint: shortcut("⇧E"), run: () => void exportDoc() },
           { id: "print", label: "Print or save as PDF…", hint: shortcut("P"), run: () => void printDoc() },
         ]
@@ -478,6 +501,7 @@ export default function App() {
   };
 
   return (
+    <NotationContext.Provider value={notation}>
     <MediaContext.Provider value={doc?.id ?? null}>
     <div className={`app${focus ? " app--focus" : ""}`}>
       <input
@@ -534,6 +558,8 @@ export default function App() {
           onToggleFocus={() => setFocus((f) => !f)}
           onDelete={() => void workspace.deleteDocument(doc.id)}
           onExport={() => void exportDoc()}
+          onEditNotation={() => setNotationOpen("macros")}
+          references={references}
           onPrint={() => void printDoc()}
           onAsk={ask}
           onAcceptSuggestion={acceptSuggestion}
@@ -704,7 +730,20 @@ export default function App() {
           }}
         />
       )}
-      {doc && printing === doc.id && <PrintDocument doc={doc} numbered={numbered} author={settings?.displayName ?? ""} />}
+      {doc && printing === doc.id && <PrintDocument doc={doc} numbered={numbered} author={settings?.displayName ?? ""} references={references} />}
+      {doc && notationOpen && (
+        <NotationDialog
+          macros={doc.macros ?? ""}
+          bibliography={doc.bibliography ?? ""}
+          cited={new Set(signature ? signature.split(",") : [])}
+          initialTab={notationOpen}
+          onSave={(macros, bibliography) => {
+            updateDoc((d) => ({ ...d, macros: macros.trim() ? macros : undefined, bibliography: bibliography.trim() ? bibliography : undefined }));
+            setNotationOpen(null);
+          }}
+          onClose={() => setNotationOpen(null)}
+        />
+      )}
       {notice && (
         <div className={`toast${notice.error ? " toast--error" : ""}`} role={notice.error ? "alert" : "status"}>
           <span className="toast__text">{notice.text}</span>
@@ -720,6 +759,7 @@ export default function App() {
       )}
     </div>
     </MediaContext.Provider>
+    </NotationContext.Provider>
   );
 }
 

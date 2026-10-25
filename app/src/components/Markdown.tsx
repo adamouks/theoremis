@@ -1,4 +1,5 @@
-import { createContext, memo, useContext, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, memo, useContext, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import type { KatexOptions } from "katex";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -8,14 +9,32 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { assetUrl } from "../lib/api";
 import { GraphBlock } from "./graph/GraphBlock";
 import { graphPicture } from "./graph/graphPicture";
+import { citationLinkKeys, linkCitations } from "../lib/citations";
 import { normalizeMath, unnumberEnvironments } from "../lib/text";
 import { Check, Copy } from "./Icons";
 
 const remarkPlugins = [remarkGfm, remarkMath];
-const rehypePlugins: ComponentProps<typeof ReactMarkdown>["rehypePlugins"] = [
-  [rehypeKatex, { throwOnError: false, strict: "ignore" }],
-  rehypeHighlight,
-];
+type RehypePlugins = ComponentProps<typeof ReactMarkdown>["rehypePlugins"];
+
+/** The open document's macros and references, for its math and its citations. */
+export interface Notation {
+  macros: NonNullable<KatexOptions["macros"]>;
+  /** A cited reference's number, in the order the exported paper will number them. */
+  number: (key: string) => number | undefined;
+  /** A cited reference written out, for its tooltip; undefined for an unknown key. */
+  describe: (key: string) => string | undefined;
+}
+
+export const NotationContext = createContext<Notation | null>(null);
+
+/** KaTeX with the document's macros. Each render gets its own copy, as KaTeX writes into it. */
+function useRehypePlugins(): RehypePlugins {
+  const notation = useContext(NotationContext);
+  return useMemo(
+    () => [[rehypeKatex, { throwOnError: false, strict: "ignore", ...(notation ? { macros: { ...notation.macros } } : {}) }], rehypeHighlight],
+    [notation],
+  );
+}
 
 const SEVERITIES = new Set(["CRITICAL", "MAJOR", "MINOR"]);
 
@@ -31,9 +50,21 @@ function textOf(node: ReactNode): string {
 /** The document whose media `asset:` links point into. */
 export const MediaContext = createContext<string | null>(null);
 
-/** `asset:name.png` is a file kept with the document; everything else is sanitized as usual. */
+/** `asset:name.png` is a file kept with the document, `cite:key` a citation; everything else is sanitized as usual. */
 function urlTransform(url: string): string {
-  return /^asset:[\w.-]+$/.test(url) ? url : defaultUrlTransform(url);
+  return /^(?:asset:[\w.-]+|cite:[^\s]+)$/.test(url) ? url : defaultUrlTransform(url);
+}
+
+/** A citation, "[3, Thm. 2]", with the references it cites in its tooltip. */
+function Citation({ keys, children }: { keys: string[]; children: ReactNode }) {
+  const notation = useContext(NotationContext);
+  const described = keys.map((key) => notation?.describe(key) ?? `No reference has the key “${key}”.`);
+  const missing = keys.some((key) => !notation?.describe(key));
+  return (
+    <span className={`citation${missing ? " citation--missing" : ""}`} title={described.join("\n\n")}>
+      {children}
+    </span>
+  );
 }
 
 const captionComponents: Components = {
@@ -53,6 +84,7 @@ function keepCaptions(markdown: string): string {
 /** A figure: the image, and its caption (Markdown and math allowed). */
 function Figure({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
   const documentId = useContext(MediaContext);
+  const rehypePlugins = useRehypePlugins();
   const [failed, setFailed] = useState(false);
   const name = src?.startsWith("asset:") ? src.slice("asset:".length) : null;
   const resolved = name ? (documentId ? assetUrl(documentId, name) : undefined) : src;
@@ -155,19 +187,23 @@ function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
 const components: Components = {
   pre: ({ node: _node, ...props }) => <CodeBlock {...props} />,
   // Links would otherwise navigate the app's own webview.
-  a: ({ node: _node, href, children, ...props }) => (
-    <a
-      {...props}
-      href={href}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (href && /^(https?|mailto):/i.test(href)) void openUrl(href);
-      }}
-    >
-      {children}
-    </a>
-  ),
+  a: ({ node: _node, href, children, ...props }) => {
+    const cited = href ? citationLinkKeys(href) : null;
+    if (cited) return <Citation keys={cited}>{children}</Citation>;
+    return (
+      <a
+        {...props}
+        href={href}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (href && /^(https?|mailto):/i.test(href)) void openUrl(href);
+        }}
+      >
+        {children}
+      </a>
+    );
+  },
   img: ({ node: _node, src, alt, title }) => <Figure src={typeof src === "string" ? src : undefined} alt={alt} title={title} />,
   table: ({ node: _node, ...props }) => (
     <div className="table-scroll">
@@ -192,6 +228,9 @@ interface Props {
 }
 
 export const Markdown = memo(function Markdown({ text, variant = "doc", normalized = false, codeFooter }: Props) {
+  const rehypePlugins = useRehypePlugins();
+  const notation = useContext(NotationContext);
+  const cited = notation ? linkCitations(text, notation.number) : text;
   return (
     <div className={`markdown markdown--${variant}`}>
       <CodeFooterContext.Provider value={codeFooter}>
@@ -201,7 +240,7 @@ export const Markdown = memo(function Markdown({ text, variant = "doc", normaliz
           components={components}
           urlTransform={urlTransform}
         >
-          {keepCaptions(normalized ? text : variant === "doc" ? normalizeMath(text) : unnumberEnvironments(normalizeMath(text)))}
+          {keepCaptions(normalized ? cited : variant === "doc" ? normalizeMath(cited) : unnumberEnvironments(normalizeMath(cited)))}
         </ReactMarkdown>
       </CodeFooterContext.Provider>
     </div>

@@ -101,6 +101,8 @@ export const api = {
    */
   saveFile: (name: string, kind: string, bytes: Uint8Array) =>
     invoke<string | null>("save_file", bytes, { headers: { "x-name": name, "x-kind": kind } }),
+  /** BibTeX for an arXiv id or a DOI, looked up on arXiv or doi.org. Its key is a placeholder. */
+  lookupReference: (text: string) => invoke<string>("lookup_reference", { text }),
   /** The system's print dialog for the page, which can also save it as a PDF. */
   printPage: () => invoke<void>("print_page"),
 };

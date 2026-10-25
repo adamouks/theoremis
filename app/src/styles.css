@@ -5317,3 +5317,214 @@ a:hover {
     display: none;
   }
 }
+
+/* Citations and the references they number (lib/citations.ts, lib/bibtex.ts). */
+.citation {
+  color: var(--accent-text);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.citation--missing {
+  color: var(--danger);
+}
+
+.doc-references {
+  margin: 28px 0 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.doc-references__title {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: 17.5px;
+  font-weight: 500;
+  color: var(--paper-strong);
+}
+
+.doc-references ol,
+.print-doc__references ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-references li,
+.print-doc__references li {
+  display: grid;
+  grid-template-columns: 2.6em minmax(0, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.doc-references li .markdown--doc {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.doc-references__number {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--paper-2);
+}
+
+.doc-references .link-button {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+/* The document's macros and references (components/NotationDialog.tsx). */
+.notation-dialog {
+  width: min(640px, 100%);
+}
+
+.notation-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 20px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.notation-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: -1px;
+  padding: 7px 10px 8px;
+  border-bottom: 2px solid transparent;
+  font-size: 12.5px;
+  color: var(--text-4);
+}
+
+.notation-tabs button:hover {
+  color: var(--text-strong);
+}
+
+.notation-tabs button.is-on {
+  border-bottom-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.notation-tabs__count {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-5);
+}
+
+.field textarea.notation-source {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.notation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -4px 0 12px;
+}
+
+.notation-chips code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-text);
+}
+
+.notation-problem {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: oklch(0.82 0.09 60);
+}
+
+.notation-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-4);
+}
+
+.notation-note code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.notation-lookup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notation-lookup input {
+  flex: 1;
+  min-width: 0;
+}
+
+.notation-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.notation-entries li {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.notation-entries__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.notation-entries__head code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-strong);
+}
+
+.notation-entries__state {
+  font-size: 11px;
+  color: var(--text-5);
+}
+
+.notation-entries__state.is-cited {
+  color: oklch(0.8 0.08 150);
+}
+
+.notation-entries__head .text-button {
+  margin-left: auto;
+}
+
+@media print {
+  .print-root .citation {
+    color: inherit;
+  }
+
+  .print-doc__references {
+    margin-top: 1.6em;
+  }
+
+  .print-doc__references h2 {
+    margin: 0 0 0.6em;
+    font-size: 16px;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .print-doc__references li .markdown--doc,
+  .print-doc__references .doc-references__number {
+    font-size: 13px;
+    color: #111;
+  }
+}

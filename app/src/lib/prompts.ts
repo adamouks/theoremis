@@ -1,6 +1,7 @@
 import { describeRun, documentForAgent, type Handles } from "./agent";
 import { describeSeminar, type Member } from "./seminar";
 import { documentAsText } from "./doc";
+import { notationForPrompt } from "./notation";
 import type { Attachment, ChatMessage, Doc, Mode, Thread, ThreadMessage } from "./types";
 
 export const MODE_LABELS: Record<Mode, string> = {
@@ -106,7 +107,7 @@ const capped = (document: string) =>
  * that can't see.
  */
 export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, images: Map<string, string> = new Map()): ChatMessage[] {
-  const system = [COLLABORATOR, userPrompt.trim(), `The document, with its current statuses:\n\n${capped(documentAsText(doc))}`]
+  const system = [COLLABORATOR, userPrompt.trim(), `The document, with its current statuses:\n\n${capped(documentAsText(doc))}${notationForPrompt(doc)}`]
     .filter(Boolean)
     .join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, images)];
@@ -123,7 +124,7 @@ const AUTO = `You are in Auto mode. Instead of proposing changes, you make them 
 
 /** The request for a reply in Auto mode: the same conversation, the document with block handles, and the tools' rules. */
 export function buildAgentMessages(doc: Doc, thread: Thread, userPrompt: string, handles: Handles, images: Map<string, string> = new Map()): ChatMessage[] {
-  const system = [COLLABORATOR, AUTO, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}`]
+  const system = [COLLABORATOR, AUTO, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}${notationForPrompt(doc)}`]
     .filter(Boolean)
     .join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, images)];
@@ -139,7 +140,7 @@ A small request needs one or two members; don't convene more than the work needs
 
 /** The chair's request: decide who works on what. */
 export function buildConveneMessages(doc: Doc, thread: Thread, userPrompt: string, handles: Handles, images: Map<string, string> = new Map()): ChatMessage[] {
-  const system = [COLLABORATOR, CHAIR, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}`].filter(Boolean).join("\n\n");
+  const system = [COLLABORATOR, CHAIR, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}${notationForPrompt(doc)}`].filter(Boolean).join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, images)];
 }
 
@@ -167,7 +168,7 @@ export function buildMemberMessages(
   member: Member,
   all: Member[],
 ): ChatMessage[] {
-  const system = [COLLABORATOR, AUTO, membership(member, all, handles), userPrompt.trim(), `The document, as you begin:\n\n${capped(documentForAgent(doc, handles))}`]
+  const system = [COLLABORATOR, AUTO, membership(member, all, handles), userPrompt.trim(), `The document, as you begin:\n\n${capped(documentForAgent(doc, handles))}${notationForPrompt(doc)}`]
     .filter(Boolean)
     .join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, images)];
@@ -183,7 +184,7 @@ export function buildSummaryMessages(
   handles: Handles,
   reports: { role: string; objective: string; report: string }[],
 ): ChatMessage[] {
-  const system = [COLLABORATOR, SUMMARY, userPrompt.trim(), `The document now:\n\n${capped(documentForAgent(doc, handles))}`].filter(Boolean).join("\n\n");
+  const system = [COLLABORATOR, SUMMARY, userPrompt.trim(), `The document now:\n\n${capped(documentForAgent(doc, handles))}${notationForPrompt(doc)}`].filter(Boolean).join("\n\n");
   const told = reports.map((r) => `${r.role} (${r.objective}):\n${r.report || "(no report)"}`).join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, new Map()), { role: "user", content: `[The members' reports]\n\n${told}` }];
 }

@@ -4,12 +4,13 @@
 
 import { createPortal } from "react-dom";
 import type { NumberedBlock } from "../lib/doc";
+import type { CitedReference } from "../lib/notation";
 import type { Doc } from "../lib/types";
 import { GraphContext, Markdown, MediaContext } from "./Markdown";
 
 const PRINT_GRAPHS = { editable: false, compact: false, print: true };
 
-export function PrintDocument({ doc, numbered, author }: { doc: Doc; numbered: NumberedBlock[]; author: string }) {
+export function PrintDocument({ doc, numbered, author, references }: { doc: Doc; numbered: NumberedBlock[]; author: string; references: CitedReference[] }) {
   return createPortal(
     <div className="print-root" aria-hidden="true">
       <MediaContext.Provider value={doc.id}>
@@ -29,6 +30,19 @@ export function PrintDocument({ doc, numbered, author }: { doc: Doc; numbered: N
                   <Markdown text={n.text} variant="doc" normalized />
                 </div>
               ))}
+            {references.length > 0 && (
+              <section className="print-doc__references">
+                <h2>References</h2>
+                <ol>
+                  {references.map((r) => (
+                    <li key={r.key}>
+                      <span className="doc-references__number">[{r.number}]</span>
+                      <Markdown text={r.text} variant="doc" />
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
           </article>
         </GraphContext.Provider>
       </MediaContext.Provider>
