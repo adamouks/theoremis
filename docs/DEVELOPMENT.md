@@ -58,6 +58,11 @@ app/src/                      React + TypeScript interface
   lib/agent.ts                Auto mode's tools, block handles and Undo
   lib/agentLoop.ts            The loop of model and tools, shared by Auto and Seminar members
   lib/seminar.ts              Seminar mode: convening members, running them at once
+  lib/latexExport.ts          A document as an amsart source; lib/exportDocument.ts saves it
+  lib/zip.ts                  ZIP writing, for exports and shared documents
+  lib/macros.ts, bibtex.ts    A document's macros and references; lib/citations.ts, its \cite
+  lib/notation.ts             Both, read once for rendering, prompts and export
+  lib/share.ts                A document as a .theoremis file to send a co-author
   lib/attachments.ts          Files sent with a question: page images and text
   lib/sources.ts              Reading imports: PDFs, photos, LaTeX, Markdown, Word, HTML, …
   lib/pdf.ts, figures.ts      pdf.js pages and text; finding figures in what a page draws
@@ -178,6 +183,8 @@ the graph; changes are written back to the fence.
 | `⌘\` | Toggle collaborator |
 | `⌘↵` | Accept suggestion / new writing paragraph |
 | `⌘,` | Settings |
+| `⌘P` | Print, or save as PDF |
+| `⌘⇧E` | Export as LaTeX |
 
 Use `Ctrl` in place of `⌘` on Windows and Linux.
 
@@ -190,6 +197,9 @@ Use `Ctrl` in place of `⌘` on Windows and Linux.
 | Projects | `workspace/projects.json` in app data |
 | Documents and threads | Individual JSON files in `workspace/documents/` |
 | Images, figures, attachments, imported originals | `workspace/assets/<document id>/`, removed with the document |
+| Earlier versions | `workspace/history/<document id>/`, up to sixty, removed with the document |
+
+The workspace can be moved to a folder of your choosing (**Settings → Workspace**), such as one Dropbox, iCloud Drive or OneDrive shares; it's then in a `Theoremis` folder there, and `settings.json` records where.
 | Mathlib project | `lean/TheoremisMath` in app data (`~/.elan` for Lean) |
 
 The app ID is `app.theoremis.desktop`. Typical base directories: `~/Library/Application Support/app.theoremis.desktop` on macOS; `~/.config/app.theoremis.desktop` and `~/.local/share/app.theoremis.desktop` on Linux; `%APPDATA%\app.theoremis.desktop` on Windows.

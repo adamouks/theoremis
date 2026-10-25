@@ -19,14 +19,18 @@ Mathematical work often happens across separate editors, chats, and proof assist
 
 - **Write mathematics naturally.** Markdown and LaTeX editing, numbered equations (including rows of `align`), and a toggle between rendered output and TeX source.
 - **Keep track of what's established.** Statements can be *open, tested, draft, adopted, proved,* or *verified*. Status indicators in the gutter and sidebar show where a proof stands.
-- **Reason alongside AI.** Highlight a step or work in one of four modes: **Explore**, **Find gaps**, **Challenge**, and **Formalize**. Feedback stays attached to its document context.
+- **Reason alongside AI.** Highlight a step or work in one of five modes: **Explore**, **Find gaps**, **Challenge**, **Formalize**, and **Is it known?**, which searches arXiv and Crossref and answers from what it finds, citing each paper, so you can add it to your references in one click. Feedback stays attached to its document context.
 - **Manual, Auto or Seminar.** In **Manual** the collaborator proposes and you decide. In **Auto** it does the work itself: it edits the document, writes Lean and checks it until Lean accepts, draws graphs, and reads the rest of the project. In **Seminar** it convenes a few members, each with its own objective (a Prover, a Skeptic, a Formalizer…), who work on the document at the same time while you watch each one's orb. Every change is marked, listed step by step, and undone in one click. Only Lean can make a statement *verified*, even in Auto.
 - **Check proofs with Lean 4.** Generate Lean code using Mathlib, run **Check with Lean**, inspect errors or dependencies on `sorry`, and mark a step verified only when the checker accepts it under the app's checks.
 - **Bring in your research.** Import PDFs, photos of handwritten notes or a blackboard, LaTeX, Markdown, Word, HTML, Jupyter notebooks, CSV or code. A vision model transcribes them into statements with statuses, figures are copied straight from the PDF, and every paragraph links back to its page in the original.
 - **Graph in 2D and 3D.** `graph` and `graph3d` blocks put a graphing calculator in the document: curves, implicit curves, regions, polar and parametric plots, sliders you can play, surfaces and curves in space. The collaborator can draw them too.
 - **Show the collaborator anything.** Attach images, PDFs and files to a question, and paste screenshots straight into a paragraph.
+- **Your macros and references.** Paste your paper's preamble and the document renders with your `\newcommand`s. Keep references as BibTeX, add one by arXiv id or DOI, and write `\cite{key}`: citations are numbered as the exported paper will number them.
+- **Export as LaTeX, print as PDF.** Export an amsart source for pdfLaTeX, with theorems and proofs in amsthm environments, equations numbered as in Theoremis, graphs and figures as files and a `references.bib`, as one ZIP ready for Overleaf or arXiv. Or print, and save as PDF.
+- **Never lose a version.** Theoremis keeps versions of every document as you work and before the collaborator changes it, and brings any of them back.
+- **Work with co-authors.** Keep the workspace in a folder Dropbox, iCloud Drive or OneDrive shares; if a document changes in two places at once, both versions are kept. Or send one document as a `.theoremis` file.
 - **Stay in control of edits.** Proposed rewrites show the original and replacement; accept, edit, reject, or undo. AI messages are explicitly labeled **not verified**.
-- **Work locally.** Documents and threads are stored as files on your machine. Use a local Ollama model or connect a ChatGPT account.
+- **Work locally.** Documents and threads are stored as files on your machine, in a folder you choose. Use a local Ollama model or connect a ChatGPT account.
 
 ## From an idea to a checked proof
 
@@ -46,7 +50,8 @@ This separates **exploration**, which AI can help accelerate, from **verificatio
 | AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models; a reasoning effort per model, from Instant to Max as each model allows; Manual proposals, an Auto agent with document, Lean and graph tools, or a Seminar of agents working at once |
 | Formal checking | Lean 4, Mathlib, `lake env lean`, theorem/axiom inspection |
 | Imports and graphs | pdf.js (text layer, rendering, figure detection), vision models, three.js, an expression language compiled without `eval` |
-| Documents | Local JSON files, autosave, per-document conversation threads |
+| Documents | Local JSON files, autosave, versions, per-document conversation threads; LaTeX (amsart, BibTeX) export, print to PDF, shared folders and `.theoremis` files |
+| References | BibTeX with amsplain numbering; lookup by arXiv id or DOI and literature search on arXiv and Crossref, free and keyless |
 | Security-minded design | Encrypted sign-in credentials using an OS-keychain-backed key; AI edits require user approval |
 | Distribution | macOS (Apple silicon and Intel), Windows and Linux installers; GitHub Actions CI and signed automatic updates |
 
@@ -106,7 +111,8 @@ architecture.md        how Theoremis works, and why it is built this way
 
 - Update Mathlib from inside the app
 - Document cross-references that renumber automatically
-- Official macOS Developer ID and Windows release signing
+- Signed releases: the workflows sign and notarize as soon as the certificates are in place ([RELEASING.md](docs/RELEASING.md))
+- zbMATH Open in literature search
 
 These are planned capabilities, not promises of release dates.
 

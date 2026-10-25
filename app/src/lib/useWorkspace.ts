@@ -371,7 +371,8 @@ export function useWorkspace() {
     async (everything: boolean) => {
       const open = current.current;
       if (open && !dirty.current) {
-        const changed = await api.changedDocuments([open.id]).catch(() => [] as string[]);
+        // In the save queue, so a save of this app's own can't look like someone else's.
+        const changed = await enqueue(() => api.changedDocuments([open.id])).catch(() => [] as string[]);
         if (changed.includes(open.id) && current.current?.id === open.id && !dirty.current) {
           const theirs = await enqueue(() => api.loadDocument(open.id)).catch(() => null);
           if (theirs && current.current?.id === open.id && !dirty.current) {

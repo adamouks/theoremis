@@ -28,11 +28,12 @@ Theoremis is a desktop app with two halves joined by Tauri's IPC, plus a separat
 │  chatgpt/         Sign in with ChatGPT (OAuth+PKCE), encrypted vault, Responses │
 │  providers/       Ollama, and the chat message shape both providers share      │
 │  lean/            elan + Mathlib setup, screening and running checks           │
-│  storage.rs       projects.json, one JSON file per document, media per document│
+│  storage.rs       documents, media, versions; never saves over others' edits   │
+│  references.rs    papers by arXiv id or DOI, and searches of arXiv and Crossref│
 │  settings.rs      settings.json                                                │
 └────────────────────────────────────────────────────────────────────────────────┘
         │ HTTPS                       │ HTTP (localhost)          │ processes
-   ChatGPT (OpenAI)              Ollama server              elan / lake / lean
+   ChatGPT, arXiv, Crossref      Ollama server              elan / lake / lean
 
 site/   theoremis.com: a static Vite page with download buttons, deployed by Vercel
 ```
@@ -125,8 +126,25 @@ mean the same equation.
 
 `useWorkspace` keeps the open document in memory and writes it 600 ms after the last change,
 and on window hide. Rust writes each file atomically (to `.tmp`, then rename), so a crash
-mid-save never leaves half a document. Documents load one at a time; the sidebar lists them
-from the header fields `storage.rs` reads.
+mid-save never leaves half a document. On Windows, where a file another program has open can't
+be replaced for a moment, the rename is retried briefly. Documents load one at a time; the
+sidebar lists them from the header fields `storage.rs` reads.
+
+**Versions.** Saving also keeps a version of the document, at most every ten minutes of work,
+in `history/<document id>/` (an `index.json` and one file per version), up to sixty; past that
+the oldest go, unlabelled ones first. An empty new document keeps none. Before an Auto reply,
+a seminar or a restore, the document is kept too, labelled (`snapshot_document`). Version
+history lists them, shows one as it was, and restores its title, summary, blocks, macros and
+references; threads stay as they are.
+
+**Never over someone else's edits.** The workspace can live in a folder a sync service shares
+(see [Working with co-authors](#working-with-co-authors)), so another computer may change a file
+while it's open here. `storage.rs` remembers a fingerprint of each document's file as it last
+read or wrote it, and `save_document` returns nothing, without writing, when the file on disk
+differs. The open document's save then keeps both: theirs becomes the document, and the edits
+made here are saved beside it as "(your version)", with its media copied (`keepBoth` in
+`useWorkspace`). The check that a file changed (`changed_documents`) runs in the same queue as
+saves, so a save of this app's own is never mistaken for someone else's.
 
 ## The collaborator
 
@@ -141,7 +159,8 @@ below).
 "Proposed revision" / "Proposed addition" conventions, the graph syntax), the person's own
 instructions from Settings, and the whole document as text, with equation numbers and
 statuses, capped at 12,000 characters. Each user turn carries the mode's instruction
-(Explore, Find gaps, Challenge, Formalize), the selected passage and any attached files.
+(Explore, Find gaps, Challenge, Formalize, Is it known?), the selected passage and any attached
+files. The document's macros and references follow the document (`notationForPrompt`).
 
 **Streaming.** `api.streamChat` invokes the `chat_stream` command with a Tauri `Channel`.
 Rust streams deltas (and, for models that expose it, reasoning) into the channel; the hook
@@ -186,6 +205,8 @@ The tools:
 | `set_title` | Change the title and summary |
 | `check_lean` | Run Lean on a file; with `block`, mark that block verified if Lean accepts it |
 | `check_graph` | Parse graph code and report what each line draws and any errors |
+| `search_literature` | Search arXiv and Crossref, for whether a result is known |
+| `add_reference` | Add a paper to the document's references by arXiv id or DOI, and get its key to `\cite` |
 
 How it's built, and why:
 
@@ -265,6 +286,37 @@ the chair: one request without tools, from the members' reports ──► the re
 
 Seminar needs a model that calls tools, as Auto does, and works like Manual without one.
 
+### Is it known?
+
+A sixth way to ask, for the question mathematicians ask most: has this been done?
+
+```
+question ──► the model writes one or two keyword searches (buildQueryMessages, readQueries)
+   │
+   ▼
+Rust searches arXiv (Atom, with abstracts) and Crossref (published work) at once ──► papers
+   │                                           a preprint Crossref also found is listed once
+   ▼
+the reply is given the numbered results and asked to cite them by number ──► the reply
+```
+
+- **Searching is in Rust** (`references.rs`), like everything that leaves the computer. Only
+  the searches go out, never the document. Both services are free and need no account; one
+  that doesn't answer is named rather than failing the search.
+- **The model is held to the results.** It is told to tell the same result from a stronger,
+  weaker or merely related one, to cite by number, never to invent a reference, and to say
+  plainly when the search doesn't settle it (`MODE_INSTRUCTIONS.literature`).
+- **The reply shows its sources** (`components/ai/Sources.tsx`), numbered as it cites them, each
+  opening in the browser and added to the references in one click. Later turns are told what
+  [1], [2]… were (`describeSources`).
+- **Agents have it as tools.** In Auto and Seminar, `search_literature` and `add_reference` do
+  the same, and an added reference is a recorded change (`kind: "bibliography"`) that Undo
+  takes back. The chair may convene a Librarian for it.
+
+zbMATH Open isn't searched yet: its API couldn't be reached while this was built, so its
+answers' shape couldn't be checked. Adding it means a third function beside `search_arxiv`
+and `search_crossref`.
+
 ### How the collaborator looks
 
 The collaborator's AI surfaces live in `components/ai/`. Motion there carries information
@@ -277,6 +329,7 @@ about what the model is doing; none of it is decoration on its own.
 | `Shimmer` | Status text while something runs: "Thinking…", "Checking with Lean…" |
 | `Reasoning` | What the model thought. It opens while the model thinks, folds a second after the answer starts, and then says how long it thought (`thoughtSeconds`) |
 | `AgentTimeline` | An Auto reply: its text, with each tool on a rail between. Lean's errors open under Details. It ends with what changed, Undo, and how long the run took (`finishedAt`) |
+| `Sources` | What an "Is it known?" reply searched for and found, numbered as it cites them, with Add to references |
 | `SeminarView` | A Seminar reply: a card for each member with its orb, role, objective, what it is doing now, its report, and its steps under Show work. Then the chair's summary, what changed and Undo |
 | `ComposerBeam`, `AutoLabel` | A light around the composer and a lit "Auto" or "Seminar" while the collaborator works on its own |
 | `Sparks` | Two moments worth marking: Lean verifying a statement, and the person taking in a proposal (Accept, Insert) |
@@ -334,6 +387,86 @@ the model's default when a remembered choice is no longer offered.
 | Ollama | `thinking` in the model's capabilities: gpt-oss takes `low`, `medium` or `high`; other thinking models take `none` (Instant) or `think` | `think: false`, `think: true`, or the level |
 
 Models that offer no choice show no gauge and get no effort.
+
+## Macros and references
+
+A paper has a preamble of macros and a bibliography; so does a document.
+
+- **Macros** (`doc.macros`, `lib/macros.ts`): whatever is pasted, a whole preamble included.
+  `readMacros` reads out the `\newcommand`, `\renewcommand`, `\providecommand`,
+  `\DeclareMathOperator` and `\def` definitions and gives each to KaTeX (with `globalGroup`, so
+  they fill a macros object every render then copies). LaTeX lacks some commands KaTeX has
+  (`\R`, `\N`), so a `\newcommand` KaTeX calls a redefinition is retried as `\renewcommand`;
+  `\DeclareMathOperator` becomes `\operatorname`. A definition KaTeX can't take, like an
+  optional argument with a default, is named with the reason and still exported.
+- **References** (`doc.bibliography`, `lib/bibtex.ts`): BibTeX, kept as written, so the export
+  writes it back unchanged. `parseBibtex` reads entries, `@string`s and `#` concatenation.
+  An entry is added by arXiv id or DOI (`lookup_reference`: arXiv's API turned into a `@misc`
+  with `howpublished` and `eprint`; doi.org's BibTeX by content negotiation), from a .bib file,
+  or pasted. A looked-up title is braced so styles keep its capitals.
+- **Citations** are LaTeX: `\cite{key}`, `\cite{a,b}`, `\cite[Thm. 2]{key}`. For showing,
+  `linkCitations` turns each into a `cite:` link the Markdown component draws as "[3, Thm. 2]",
+  with the reference in its tooltip; an unknown key is a red "[?]". The LaTeX export passes
+  them through.
+- **The numbers are the paper's.** The export uses amsplain, so the app numbers, names and
+  titles references as amsplain does (`citationNumbers`, `formatEntry`, `sentenceCase`): only
+  cited entries, sorted by author, full first names, titles in sentence case except what's
+  braced. The cited references are listed at the end of the document and of a print.
+- **The collaborator is told both** (`notationForPrompt`, after the document in every request),
+  and asked to use the macros and cite only the listed references.
+
+`lib/notation.ts` reads both once for the open document; App provides them to every Markdown
+through `NotationContext`. The citation signature (the sorted cited keys) is what the context
+depends on, so typing doesn't re-render every equation.
+
+## Export and print
+
+**LaTeX** (`lib/latexExport.ts`, `lib/exportDocument.ts`). `documentToLatex` turns a document
+into an amsart source for pdfLaTeX, walking each block's Markdown as an mdast tree (remark with
+GFM and math):
+
+- Statements become amsthm environments that keep their names and numbers:
+  `\begin{statement}{Theorem 2.1}`, plain style when the statement's text is italic (the
+  italics are then dropped), definition style (`statement*`) when it isn't. Proofs use amsthm's
+  `proof`, without a second end-of-proof box.
+- Display equations are numbered by LaTeX exactly where `numberEquations` numbers them
+  (`displayMath`), so LaTeX's counter gives the same sequence and "(3)" in the prose still
+  points at (3).
+- Graphs become PNGs: a 2D graph is drawn afresh in paper colours (`drawPlane` with `PAPER`),
+  a 3D graph is taken from its block on screen, rendered once on white (`offerPicture`).
+  Figures are copied, converted to PNG when pdfLaTeX can't include their format.
+- Unicode pdfLaTeX doesn't know (Lean's ℕ, ∑, ∈, Greek, arrows) is declared with
+  `\DeclareUnicodeCharacter`; macros KaTeX has but LaTeX doesn't get `\providecommand`s after
+  the document's own; packages are added for what the source uses; statuses stay as comments.
+
+With figures or references, the export is a ZIP (`lib/zip.ts`, written in the browser) with the
+`.tex`, `figures/` and `references.bib`, ready for Overleaf or arXiv; otherwise a `.tex`. It's
+saved through `save_file`, which runs the save dialog in Rust (`tauri-plugin-dialog`) and writes
+where the person chose, so the interface never names a path.
+
+**Print and PDF.** `PrintDocument` renders the document into the page for print only: black on
+white, the title, author and summary, numbered equations, graphs pictured in paper colours, and
+the references. `print_page` opens the system print dialog through the webview (wry prints on
+all three platforms), whose Save as PDF makes the PDF. It stays mounted until printing ends,
+since the dialog reads the page late.
+
+## Working with co-authors
+
+- **A shared folder.** Settings → Workspace keeps the workspace in another folder, usually one
+  Dropbox, iCloud Drive or OneDrive shares (`choose_workspace_folder`, kept as `workspaceDir` in
+  settings; a `Theoremis` folder inside the one picked). Moving copies the workspace in beside
+  what the folder has, without overwriting, merging the project lists, and leaves the
+  original (`copy_workspace`); opening a shared folder uses it as it is. Theoremis restarts to
+  use it. A chosen folder missing at launch isn't created; the app's own is used and the app
+  says so.
+- **No lost changes.** See [Saving](#saving): a save never goes over a change made elsewhere;
+  both are kept. The open document is checked when the window comes back and every 20 seconds;
+  changed elsewhere with no edits here, it reloads, and new projects and documents appear.
+  The sync services do the syncing; Theoremis only makes sure it doesn't destroy what they bring.
+- **Shared files.** "Share a copy as a file" writes a `.theoremis` file, a ZIP of the document
+  (`document.json`), its media and a manifest, leaving out the sender's own: collaborator
+  threads, suggestions awaiting a decision, Auto marks and history (`lib/share.ts`). Opening one
+  adds it as a new document with its media.
 
 ## Lean 4
 
@@ -464,8 +597,11 @@ Every command is in `lib.rs` and typed in `lib/api.ts`:
 | Models | `list_models`, `chat_stream` (with a channel, and tools in Auto mode), `chat_cancel` |
 | ChatGPT | `chatgpt_session`, `chatgpt_sign_in`, `chatgpt_cancel_sign_in`, `chatgpt_sign_out` |
 | Lean | `lean_status`, `lean_setup`, `lean_cancel_setup`, `lean_check` |
-| Workspace | `load_workspace`, `save_projects`, `load_document`, `save_document`, `delete_document` |
-| Media | `save_asset` (raw body), `delete_asset`, and the `theoremis://` scheme for reads |
+| Workspace | `load_workspace`, `save_projects`, `load_document`, `save_document` (nothing when the file changed elsewhere), `delete_document`, `changed_documents`, `workspace_folder`, `choose_workspace_folder`, `reset_workspace_folder` |
+| Versions | `list_versions`, `load_version`, `snapshot_document` |
+| Media | `save_asset` (raw body), `delete_asset`, `list_assets`, `copy_assets`, and the `theoremis://` scheme for reads |
+| Files | `save_file` (raw body; Rust runs the save dialog), `print_page` |
+| References | `lookup_reference` (arXiv id or DOI to BibTeX), `search_literature` (arXiv and Crossref) |
 
 Errors cross the boundary as one serialized string (`error.rs`), written to be shown to a
 person as they are.
@@ -484,6 +620,10 @@ person as they are.
   the statuses that mean a person or Lean checked something.
 - The model never runs code itself. The only thing Auto can run is a Lean check, which goes
   through the same screening as a check the person starts.
+- Files are written only where the person chooses: `save_file` runs the save dialog itself
+  and takes no path from the interface. The workspace folder is chosen the same way.
+- Looking up and searching for references sends only the id or the search words to arXiv,
+  Crossref and doi.org, never the document.
 
 What it doesn't protect against: a malicious Mathlib, a compromised model provider, or
 someone with access to the unlocked user account. The vault's key is in that user's keychain.
@@ -521,16 +661,23 @@ as production.
   assembly, transcript parsing, figure detection, converters, the expression language, graph
   specs and geometry, and every Auto-mode tool and Undo, run against plain documents with a
   fake Lean. Seminar's convening, its limit on members at once, and the guard against
-  overwriting another member's change are tested the same way. Most of the app's intelligence lives in `lib/` precisely so it can be
-  tested without a browser.
+  overwriting another member's change are tested the same way, as are the LaTeX export (and
+  its equation numbering against Theoremis's), ZIP writing, macros, BibTeX, citations and
+  their numbering, the literature tools and their Undo, and what a shared copy leaves out.
+  Most of the app's intelligence lives in `lib/` precisely so it can be tested without a
+  browser. Exports were also compiled with pdfLaTeX and BibTeX while this was built.
 - **Rust** has unit tests for every module, including token handling, the vault (with a fake
-  key store), Lean screening and verdicts (with Lean's real output), storage, and streaming
+  key store), Lean screening and verdicts (with Lean's real output), storage (versions,
+  conflicts with a file a co-author's sync replaced, copying a workspace into a shared one),
+  arXiv and Crossref answers, and streaming
   clients, including tool calls and the encrypted-reasoning fallback, against a local HTTP
   server that replays recorded responses (`providers/test_server.rs`).
 - **The interface** is exercised by driving the built frontend in a browser with Tauri's IPC
   mocked (`@tauri-apps/api/mocks`), which covers imports, graphs and the collaborator,
   including a scripted Auto run with Lean, graphs, Undo and Stop, and a scripted seminar
   (members at once, one held back from overwriting another, Undo, Stop, turns on Ollama),
+  exports and print, macros and references, version history, "Is it known?", and
+  co-authors (a shared file, a conflict kept both ways, a change picked up from elsewhere),
   without a model or a desktop window.
 
 ## Where to make a change
@@ -542,6 +689,10 @@ as production.
 | Name or describe a new effort | `LABELS` and `NOTES` in `lib/effort.ts`, and its place in `sort_efforts` (`providers/mod.rs`) |
 | Change the collaborator's effects or their colours | The wrappers in `components/ai/effects.tsx`. Leave `src/vendor/` as upstream wrote it, and list any change in `src/vendor/README.md` |
 | Change how a seminar is convened, or how many members and rounds it may take | `CHAIR` and `membership` in `lib/prompts.ts`; `CONVENE`, `MAX_MEMBERS`, `MEMBER_ROUNDS` and `concurrency` in `lib/seminar.ts` |
+| Change the LaTeX export | `documentToLatex` in `lib/latexExport.ts` (pure, with tests); the files around it in `lib/exportDocument.ts` |
+| Change how references are shown or numbered | `formatEntry`, `sentenceCase` and `citationNumbers` in `lib/bibtex.ts`, together with the export's `\bibliographystyle` |
+| Search another source for "Is it known?" | A function beside `search_arxiv` and `search_crossref` in `references.rs`, joined in `search` |
+| Change how often versions are kept, or how many | `VERSION_EVERY_MS` and `MAX_VERSIONS` in `storage.rs` |
 | Add a collaborator mode | `Mode` in `lib/types.ts`, `MODE_INSTRUCTIONS` in `lib/prompts.ts`, the composer in `Collaborator.tsx` |
 | Add a model provider | `providers/` (stream `StreamEvent`s from `ChatMessage`s), `Provider` in both `providers/mod.rs` and `lib/types.ts`, `list_models` and `run_chat` in `lib.rs` |
 | Add a block field | `Block` in `lib/types.ts`. Rust needs no change |
