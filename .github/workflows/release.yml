@@ -182,6 +182,38 @@ jobs:
           else
             echo "::warning::APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID aren't all set: the app is signed but not notarized, so Gatekeeper will still warn."
           fi
+      # With an Azure Trusted Signing account in the secrets, the Windows installer and app are
+      # signed, so SmartScreen and Windows know who published them. Without one they're unsigned.
+      - name: Use Azure Trusted Signing, if configured
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        working-directory: app
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_CLIENT_SECRET" ] || [ -z "$AZURE_TENANT_ID" ] || [ -z "$ENDPOINT" ] || [ -z "$ACCOUNT" ] || [ -z "$PROFILE" ]; then
+            echo "::warning::No Azure Trusted Signing account in the secrets: this Windows build is unsigned, so SmartScreen will ask before it runs."
+            exit 0
+          fi
+          cargo install trusted-signing-cli --locked
+          {
+            echo "AZURE_CLIENT_ID=$AZURE_CLIENT_ID"
+            echo "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET"
+            echo "AZURE_TENANT_ID=$AZURE_TENANT_ID"
+          } >> "$GITHUB_ENV"
+          node -e '
+            const fs = require("fs");
+            const file = "src-tauri/tauri.conf.json";
+            const config = JSON.parse(fs.readFileSync(file, "utf8"));
+            const { ENDPOINT, ACCOUNT, PROFILE } = process.env;
+            config.bundle.windows = { ...config.bundle.windows, signCommand: `trusted-signing-cli -e ${ENDPOINT} -a ${ACCOUNT} -c ${PROFILE} -d Theoremis %1` };
+            fs.writeFileSync(file, JSON.stringify(config, null, 2));
+          '
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

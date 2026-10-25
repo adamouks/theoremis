@@ -44,7 +44,31 @@ To set up official signing:
 
 5. Push an app change or manually trigger the Release workflow, then check the signing and notarization output.
 
-Windows installers are not currently code signed, so SmartScreen may prompt users to review the download.
+Until the certificate secrets are set, each macOS build is ad-hoc signed and the workflow says so in a warning. Signing needs all five secrets; notarization needs the last three as well.
+
+## Windows signing
+
+Unsigned Windows installers make SmartScreen warn that the publisher is unknown. The release workflow signs the app and installer with [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/) when its secrets are set; without them it builds unsigned and says so in a warning.
+
+1. In the Azure portal, create a **Trusted Signing account** and complete identity validation (at the time of writing, open to organizations and to individual developers in the USA and Canada; the Basic plan is about $10 a month).
+2. Create a **certificate profile** (Public Trust) in the account.
+3. Register an app in Microsoft Entra ID, create a client secret for it, and give it the **Trusted Signing Certificate Profile Signer** role on the account.
+4. Configure these GitHub Actions secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `AZURE_CLIENT_ID` | The Entra app's client ID |
+| `AZURE_CLIENT_SECRET` | Its client secret |
+| `AZURE_TENANT_ID` | The directory (tenant) ID |
+| `AZURE_SIGNING_ENDPOINT` | The account's endpoint, e.g. `https://eus.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT` | The Trusted Signing account's name |
+| `AZURE_SIGNING_PROFILE` | The certificate profile's name |
+
+The workflow installs `trusted-signing-cli` and sets it as Tauri's `bundle.windows.signCommand` for that build only. SmartScreen reputation still builds up over the first downloads of a newly signed app.
+
+## Linux
+
+AppImage, `.deb` and `.rpm` packages aren't code signed, as is usual on Linux. The AppImage updates itself through the signed update bundles above.
 
 ## Download links
 
