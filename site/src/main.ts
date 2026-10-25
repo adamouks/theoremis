@@ -8,7 +8,9 @@ import "katex/dist/katex.min.css";
 import katex from "katex";
 import "./site.css";
 import "./hover.css";
+import "./hero.css";
 import { RELEASES, setUpDownloads } from "./download";
+import { mountOrb } from "./orb";
 /** Set VITE_UPDATES_ENDPOINT to a form backend (Buttondown, Formspree, …) to collect emails. */
 const UPDATES_ENDPOINT = (import.meta.env.VITE_UPDATES_ENDPOINT as string | undefined) ?? "";
 
@@ -34,23 +36,25 @@ let cursorOn = false;
 let dipping = false;
 let sent = false;
 
+// The review, phase by phase: 0 nothing asked yet, 1 a step selected, 2 Find gaps asked and the
+// collaborator thinking, 3 its reply, 4 its proposed revision, 5 accepted, 6 back to writing.
 function values(): Record<string, boolean> {
   const p = phase;
   return {
+    empty: p < 2,
     selOn: p >= 1,
     tbOn: p === 1,
-    emptyOn: p < 2,
-    userOn: p >= 2,
-    thinkingOn: p === 2,
-    aiOn: p >= 3,
-    ringOn: p === 3,
-    diffOn: p === 4,
-    doneOn: p >= 5,
-    pinOn: p === 3 || p === 4,
-    pinDoneOn: p >= 5,
-    eqOrig: p < 5,
-    eqNew: p >= 5,
-    chipOn: p >= 1,
+    asked: p >= 2,
+    thinking: p === 2,
+    idleSend: p !== 2,
+    replied: p >= 3,
+    proposal: p === 4,
+    pinOn: p === 4,
+    findingNote: p === 4,
+    threadNote: p === 2 || p === 3 || p >= 5,
+    done: p >= 4,
+    before: p < 5,
+    after: p >= 5,
     clicking: p === 2 || p === 5,
     cursorOn,
     dipping,
@@ -61,11 +65,21 @@ function values(): Record<string, boolean> {
 
 const fragments = [...document.querySelectorAll<HTMLElement>(".dc-if")];
 
+const thread = document.querySelector<HTMLElement>(".hx-thread");
+const threadInner = document.getElementById("hx-thread-inner");
+let threadShift = 0;
+
 function render() {
   const v = values();
   for (const el of fragments) {
     const show = !!v[el.dataset.if ?? ""];
     if (el.hidden === show) el.hidden = !show;
+  }
+  headOrb?.set(phase === 2 ? "thinking" : "idle");
+  // The thread follows its latest message, as the app's does.
+  if (thread && threadInner) {
+    threadShift = Math.max(0, threadInner.offsetHeight - thread.clientHeight);
+    threadInner.style.transform = threadShift ? `translateY(${-threadShift}px)` : "";
   }
 }
 
@@ -77,6 +91,16 @@ const parallax = document.getElementById("hero-par");
 const glow = document.getElementById("hero-glow");
 const cursor = document.getElementById("hero-cursor");
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+const reasoning = document.getElementById("hx-reasoning");
+
+let headOrb: ReturnType<typeof mountOrb> | undefined;
+for (const canvas of document.querySelectorAll<HTMLCanvasElement>("canvas[data-orb]")) {
+  const orb = mountOrb(canvas, reducedMotion);
+  if (canvas.id === "hx-orb-head") headOrb = orb;
+}
+
+const THOUGHT =
+  "Checking (2). Splitting off the last term leaves the first n odd numbers, which (1) says sum to n². Adding 2n+1 gives (n+1)², so the step holds, but (1) is used without being cited.";
 
 let scale = 1;
 let offsetX = 0;
@@ -125,12 +149,12 @@ const NUDGE = [
   [-6, 4],
   [0, 3],
   [0, 3],
-  [60, 6],
+  [12, 1],
   [0, 3],
   [0, 3],
   [6, 6],
 ];
-const DURATIONS = [1500, 1500, 1400, 1900, 2300, 2300, 2000];
+const DURATIONS = [1500, 1500, 2800, 1900, 2400, 2300, 2000];
 
 let running = false;
 let visible = false;
@@ -156,6 +180,7 @@ function placeCursor(show = false) {
       node = node.offsetParent as HTMLElement | null;
     }
     if (node !== win) return;
+    if (threadInner?.contains(target)) y -= threadShift;
     y += target.offsetHeight / 2;
     if (phase !== 0 && phase !== 6) x += target.offsetWidth / 2;
     x += NUDGE[phase][0];
@@ -188,7 +213,15 @@ function advance() {
   phase += 1;
   render();
   placeCursor();
+  if (phase === 2) streamThought();
   later(advance, DURATIONS[phase]);
+}
+
+/** The collaborator's reasoning, arriving a few words at a time while it thinks. */
+function streamThought() {
+  if (!reasoning) return;
+  reasoning.textContent = "";
+  (THOUGHT.match(/\S+\s*/g) ?? []).forEach((word, i) => later(() => reasoning.append(word), 140 + i * 62));
 }
 
 function syncLoop() {

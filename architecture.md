@@ -631,12 +631,15 @@ someone with access to the unlocked user account. The vault's key is in that use
 ## The site
 
 `site/` is theoremis.com: one static page built with Vite from the landing design, with
-hover styles in `hover.css`, the animated review in the hero in `main.ts`, and Download
-buttons (`download.ts`). The buttons ask GitHub's API for the latest release and pick the
-installer for the visitor's OS and architecture, falling back to the releases page. Its figures are HTML with live KaTeX, like the app, except the 3D surface in §5, an SVG
-drawn by `site/scripts/draw-surface.py`. Vercel
-builds it from `vercel.json` on every push to `main`. It shares nothing with the app at
-runtime.
+hover styles in `hover.css`, and Download buttons (`download.ts`). The hero is the app's window
+replaying a review, in `hero.css` (the app's own tokens and sizes) and `main.ts` (the script);
+when the app's interface changes, the hero should change with it. Its orb is drawn by
+`orb.ts` with the app's vendored Thinking Orbs engine, imported from `app/src/vendor`, the
+one place the site uses the app's code. The buttons ask GitHub's API for the latest release
+and pick the installer for the visitor's OS and architecture, falling back to the releases
+page. Its figures are HTML with live KaTeX, like the app, except the 3D surface in §5, an SVG
+drawn by `site/scripts/draw-surface.py`. Vercel builds it from `vercel.json` on every push to
+`main`. It shares nothing with the app at runtime.
 
 ## Build, release and updates
 

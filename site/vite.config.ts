@@ -8,5 +8,7 @@ export default defineConfig({
   },
   server: {
     port: 1430,
+    // The hero draws its orb with the app's vendored engine, in ../app.
+    fs: { allow: [".."] },
   },
 });

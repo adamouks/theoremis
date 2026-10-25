@@ -213,7 +213,7 @@ npm run dev      # http://localhost:1430
 npm run build    # site/dist
 ```
 
-The static site is hosted on Vercel. The repository's `vercel.json` builds `site/`; pushes to `main` redeploy the site. The design includes `site/src/hover.css`, `site/src/main.ts`, and `site/src/download.ts`. Download links choose installers from the latest GitHub release. To activate the email updates form, set `VITE_UPDATES_ENDPOINT` to a suitable form endpoint; without it, the form links to releases.
+The static site is hosted on Vercel. The repository's `vercel.json` builds `site/`; pushes to `main` redeploy the site. The design includes `site/src/hover.css`, `site/src/main.ts`, and `site/src/download.ts`; the hero, a replay of a review in the app, is styled in `site/src/hero.css` and draws its orb with the app's vendored engine through `site/src/orb.ts`. When the app's interface changes, update the hero to match. Download links choose installers from the latest GitHub release. To activate the email updates form, set `VITE_UPDATES_ENDPOINT` to a suitable form endpoint; without it, the form links to releases.
 
 ## Quality checks
 

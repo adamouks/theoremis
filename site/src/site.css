@@ -1,4 +1,5 @@
-/* Base styles and animations from the design's <helmet>. Component styles are inline in index.html. */
+/* Base styles and animations from the design's <helmet>. Component styles are inline in index.html,
+   except the hero's app window, in hero.css. */
 
 :root {
   --sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
