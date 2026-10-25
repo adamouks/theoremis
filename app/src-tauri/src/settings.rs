@@ -34,6 +34,9 @@ pub struct StoredSettings {
     pub seminar: bool,
     /// The effort chosen for each model, keyed `provider:model`, e.g. `chatgpt:gpt-5` → `high`.
     pub efforts: BTreeMap<String, String>,
+    /// Where the workspace lives, if not in the app's data folder: a folder a sync service
+    /// shares, for instance. Changed only through `set_workspace_dir`.
+    pub workspace_dir: String,
 }
 
 /// The settings as the frontend sees them.
@@ -110,6 +113,22 @@ impl SettingsStore {
         write_private(&self.path, &serde_json::to_vec_pretty(&next)?)?;
         *guard = next;
         Ok(view_of(&guard, &EnvVars::from_process()))
+    }
+
+    /// The workspace folder chosen, if one was.
+    pub fn workspace_dir(&self) -> Option<PathBuf> {
+        let dir = self.snapshot().workspace_dir;
+        (!dir.trim().is_empty()).then(|| PathBuf::from(dir))
+    }
+
+    /// Chooses the workspace folder; `None` goes back to the app's own.
+    pub fn set_workspace_dir(&self, dir: Option<&Path>) -> AppResult<()> {
+        let mut guard = self.inner.lock().expect("settings lock poisoned");
+        let mut next = guard.clone();
+        next.workspace_dir = dir.map(|d| d.display().to_string()).unwrap_or_default();
+        write_private(&self.path, &serde_json::to_vec_pretty(&next)?)?;
+        *guard = next;
+        Ok(())
     }
 
     pub fn ollama_base_url(&self) -> String {

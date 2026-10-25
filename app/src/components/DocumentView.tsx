@@ -37,6 +37,8 @@ interface Props {
   onEditNotation: () => void;
   /** Opens its earlier versions. */
   onShowHistory: () => void;
+  /** Saves a copy as a .theoremis file to send a co-author. */
+  onShare: () => void;
   /** The references the document cites, listed at its end. */
   references: CitedReference[];
   onAsk: (blockId: string, mode: Mode) => void;
@@ -72,6 +74,7 @@ export function DocumentView({
   onPrint,
   onEditNotation,
   onShowHistory,
+  onShare,
   references,
   onAsk,
   onAcceptSuggestion,
@@ -320,6 +323,17 @@ export function DocumentView({
                 >
                   <span className="menu__spacer" />
                   Version history…
+                </button>
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onShare();
+                  }}
+                >
+                  <span className="menu__spacer" />
+                  Share a copy as a file…
                 </button>
                 <div className="menu__divider" />
                 <button

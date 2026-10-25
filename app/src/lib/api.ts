@@ -31,6 +31,13 @@ export interface StreamRequest {
   onEvent: (event: StreamEvent) => void;
 }
 
+/** A document's file changed elsewhere since it was read here, so it wasn't saved over. */
+export class SaveConflict extends Error {
+  constructor(readonly documentId: string) {
+    super("This document was changed on another computer.");
+  }
+}
+
 /** Typed wrappers around the Rust commands in src-tauri/src/lib.rs. */
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
@@ -89,7 +96,23 @@ export const api = {
   loadWorkspace: () => invoke<Workspace>("load_workspace"),
   saveProjects: (projects: Project[]) => invoke<void>("save_projects", { projects }),
   loadDocument: (id: string) => invoke<Doc>("load_document", { id }),
-  saveDocument: (document: Doc) => invoke<DocumentSummary>("save_document", { document }),
+  /**
+   * Saves a document. Rejects with a `SaveConflict` without saving when its file changed since
+   * it was last read or written here: on another computer, or by a co-author.
+   */
+  saveDocument: async (document: Doc) => {
+    const summary = await invoke<DocumentSummary | null>("save_document", { document });
+    if (!summary) throw new SaveConflict(document.id);
+    return summary;
+  },
+  /** Of `ids`, the documents changed on disk since they were last read or written here. */
+  changedDocuments: (ids: string[]) => invoke<string[]>("changed_documents", { ids }),
+  listAssets: (document: string) => invoke<string[]>("list_assets", { document }),
+  copyAssets: (from: string, to: string) => invoke<void>("copy_assets", { from, to }),
+  workspaceFolder: () => invoke<{ path: string; chosen: boolean; missing: string | null }>("workspace_folder"),
+  /** Asks for a folder (e.g. a shared Dropbox one) and keeps the workspace there; Theoremis then restarts. */
+  chooseWorkspaceFolder: (copy: boolean) => invoke<string | null>("choose_workspace_folder", { copy }),
+  resetWorkspaceFolder: () => invoke<void>("reset_workspace_folder"),
   deleteDocument: (id: string) => invoke<void>("delete_document", { id }),
   /** A document's kept versions, newest first. */
   listVersions: (document: string) => invoke<Version[]>("list_versions", { document }),

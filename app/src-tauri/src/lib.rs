@@ -26,6 +26,11 @@ use storage::{DocumentSummary, Project, Version, Workspace, WorkspaceStore};
 struct AppState {
     settings: SettingsStore,
     workspace: WorkspaceStore,
+    /// The workspace folder chosen in Settings, when it couldn't be found at launch (a sync
+    /// service's folder not there yet): the app's own folder is used meanwhile.
+    workspace_missing: Option<std::path::PathBuf>,
+    /// The app's own workspace folder, used unless another is chosen.
+    default_workspace: std::path::PathBuf,
     chatgpt: ChatGpt,
     lean: Lean,
     http: reqwest::Client,
@@ -239,12 +244,108 @@ async fn load_document(
     state.workspace.load_document(&id).await
 }
 
+/// Saves a document. Returns `None` without saving when its file changed since this app last
+/// read or wrote it, on another computer or by a co-author: the frontend then keeps both.
 #[tauri::command]
 async fn save_document(
     state: tauri::State<'_, AppState>,
     document: serde_json::Value,
-) -> AppResult<DocumentSummary> {
+) -> AppResult<Option<DocumentSummary>> {
     state.workspace.save_document(&document).await
+}
+
+/// Of `ids`, the documents changed on disk since this app last read or wrote them.
+#[tauri::command]
+async fn changed_documents(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> AppResult<Vec<String>> {
+    state.workspace.changed(&ids).await
+}
+
+#[tauri::command]
+async fn list_assets(
+    state: tauri::State<'_, AppState>,
+    document: String,
+) -> AppResult<Vec<String>> {
+    state.workspace.assets(&document).await
+}
+
+#[tauri::command]
+async fn copy_assets(state: tauri::State<'_, AppState>, from: String, to: String) -> AppResult<()> {
+    state.workspace.copy_assets(&from, &to).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceFolder {
+    path: String,
+    /// A folder chosen in Settings, not the app's own.
+    chosen: bool,
+    /// The chosen folder, when it wasn't there at launch.
+    missing: Option<String>,
+}
+
+#[tauri::command]
+fn workspace_folder(state: tauri::State<'_, AppState>) -> WorkspaceFolder {
+    WorkspaceFolder {
+        path: state.workspace.dir().display().to_string(),
+        chosen: state.workspace.dir() != state.default_workspace,
+        missing: state
+            .workspace_missing
+            .as_ref()
+            .map(|p| p.display().to_string()),
+    }
+}
+
+/// Asks for a folder to keep the workspace in, e.g. one Dropbox, iCloud Drive or OneDrive
+/// shares, copies the workspace there if asked (keeping whatever the folder already has), and
+/// chooses it. Theoremis then restarts to use it. Returns the folder, or nothing if cancelled.
+#[tauri::command]
+async fn choose_workspace_folder(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    copy: bool,
+) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Keep the workspace in…")
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+    let Some(folder) = rx.await.ok().flatten() else {
+        return Ok(None);
+    };
+    let folder = folder
+        .into_path()
+        .map_err(|_| AppError::msg("Theoremis can't use that folder."))?;
+    // A folder of its own inside the one chosen, so the workspace's files stay together.
+    let target = if folder.ends_with("Theoremis") {
+        folder
+    } else {
+        folder.join("Theoremis")
+    };
+    if target == state.workspace.dir() {
+        return Ok(Some(target.display().to_string()));
+    }
+    if copy {
+        storage::copy_workspace(state.workspace.dir(), &target).await?;
+    } else {
+        tokio::fs::create_dir_all(&target).await?;
+    }
+    let chosen = (target != state.default_workspace).then_some(target.as_path());
+    state.settings.set_workspace_dir(chosen)?;
+    Ok(Some(target.display().to_string()))
+}
+
+/// Goes back to the app's own workspace folder. Theoremis then restarts to use it.
+#[tauri::command]
+fn reset_workspace_folder(state: tauri::State<'_, AppState>) -> AppResult<()> {
+    state.settings.set_workspace_dir(None)
 }
 
 #[tauri::command]
@@ -450,9 +551,20 @@ pub fn run() {
                 config_dir.join("chatgpt.json"),
                 Box::new(chatgpt::vault::OsKeyStore),
             );
+            let settings = SettingsStore::load(config_dir.join("settings.json"));
+            // A chosen folder that isn't there (a sync service's, not mounted yet) isn't
+            // created: the app's own folder is used, and Settings says so.
+            let default_workspace = data_dir.join("workspace");
+            let (workspace_dir, workspace_missing) = match settings.workspace_dir() {
+                Some(dir) if dir.is_dir() => (dir, None),
+                Some(dir) => (default_workspace.clone(), Some(dir)),
+                None => (default_workspace.clone(), None),
+            };
             app.manage(AppState {
-                settings: SettingsStore::load(config_dir.join("settings.json")),
-                workspace: WorkspaceStore::new(data_dir.join("workspace")),
+                settings,
+                workspace: WorkspaceStore::new(workspace_dir),
+                workspace_missing,
+                default_workspace,
                 chatgpt: ChatGpt::new(vault)?,
                 lean: Lean::new(data_dir.join("lean"), app.path().home_dir()?, http.clone()),
                 http,
@@ -479,6 +591,12 @@ pub fn run() {
             load_document,
             save_document,
             delete_document,
+            changed_documents,
+            list_assets,
+            copy_assets,
+            workspace_folder,
+            choose_workspace_folder,
+            reset_workspace_folder,
             list_versions,
             load_version,
             snapshot_document,

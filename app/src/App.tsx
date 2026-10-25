@@ -16,9 +16,11 @@ import { Sidebar } from "./components/Sidebar";
 import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { api, errorMessage } from "./lib/api";
 import { findReference, formatEntry, withReference } from "./lib/bibtex";
 import { exportLatex } from "./lib/exportDocument";
+import { readShared, shareDocument } from "./lib/share";
 import { citationSignature, citedReferences, readNotation } from "./lib/notation";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { effortKey, resolveEffort } from "./lib/effort";
@@ -354,8 +356,69 @@ export default function App() {
     [doc, workspace, updateDoc],
   );
 
+  // Co-authors and other computers: pick up their changes when the window comes back and now
+  // and then, and say what happened to the open document.
+  const { refreshFromDisk, elsewhere, clearElsewhere, openDocument } = workspace;
+  useEffect(() => {
+    const onFocus = () => void refreshFromDisk(true);
+    const id = window.setInterval(() => document.visibilityState === "visible" && void refreshFromDisk(false), 20_000);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(id);
+    };
+  }, [refreshFromDisk]);
+  useEffect(() => {
+    if (!elsewhere) return;
+    if (elsewhere.kind === "reloaded") setNotice({ text: "Updated with changes made on another computer." });
+    else
+      setNotice({
+        text: `This document was also changed on another computer. Theirs is open; your edits are kept as “${elsewhere.title}”.`,
+        action: { label: "Open your version", run: () => void openDocument(elsewhere.copyId) },
+      });
+    clearElsewhere();
+  }, [elsewhere, clearElsewhere, openDocument]);
+  useEffect(() => {
+    api.workspaceFolder().then(
+      (folder) => folder.missing && setNotice({ text: `Your workspace folder (${folder.missing}) isn’t available, so Theoremis is using its own until it is.`, error: true }),
+      () => {},
+    );
+  }, []);
+
+  // Sharing a document as a file, and opening one a co-author shared.
+  const shareDoc = useCallback(async () => {
+    if (!doc) return;
+    try {
+      await workspace.flush();
+      const path = await shareDocument(doc);
+      if (path) setNotice({ text: `Saved ${path.split(/[\\/]/).pop()}: send it to a co-author to open in Theoremis.`, path });
+    } catch (err) {
+      setNotice({ text: `Couldn’t share: ${errorMessage(err)}`, error: true });
+    }
+  }, [doc, workspace]);
+  const openShared = useCallback(
+    async (file: File) => {
+      try {
+        const projectId = doc?.projectId ?? workspace.projects[0]?.id ?? (await workspace.createProject("Shared with me")).id;
+        const shared = await readShared(new Uint8Array(await file.arrayBuffer()), projectId);
+        await workspace.adoptDocument(shared);
+        setNotice({ text: `Opened “${shared.title || "Untitled"}”, shared as a file.` });
+      } catch (err) {
+        setNotice({ text: `Couldn’t open ${file.name}: ${errorMessage(err)}`, error: true });
+      }
+    },
+    [doc, workspace],
+  );
+  /** Files to bring in: shared documents open as they are; everything else is imported. */
+  const importFiles = (files: File[], target: "new" | "append") => {
+    const shared = files.filter((f) => f.name.toLowerCase().endsWith(".theoremis"));
+    for (const file of shared) void openShared(file);
+    const rest = files.filter((f) => !shared.includes(f));
+    if (rest.length) setImporting({ files: rest, target });
+  };
+
   // Export and print. Where an export went is said for a few seconds, with a way to it.
-  const [notice, setNotice] = useState<{ text: string; path?: string; error?: boolean } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; path?: string; error?: boolean; action?: { label: string; run: () => void } } | null>(null);
   useEffect(() => {
     if (!notice) return;
     const id = window.setTimeout(() => setNotice(null), notice.error ? 9000 : 6000);
@@ -454,11 +517,13 @@ export default function App() {
       run: () => void workspace.createProject("Untitled project"),
     },
     { id: "import", label: "Import a paper, notes or file…", hint: shortcut("O"), run: () => pickFiles("new") },
+    { id: "open-shared", label: "Open a shared document (.theoremis)…", run: () => pickFiles("new") },
     ...(doc
       ? [
           { id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") },
           { id: "notation", label: "Macros and references…", run: () => setNotationOpen("macros") },
           { id: "history", label: "Version history…", run: () => setHistoryOpen(true) },
+          { id: "share", label: "Share a copy as a file…", run: () => void shareDoc() },
           { id: "export-latex", label: "Export as LaTeX…", hint: shortcut("⇧E"), run: () => void exportDoc() },
           { id: "print", label: "Print or save as PDF…", hint: shortcut("P"), run: () => void printDoc() },
         ]
@@ -537,7 +602,7 @@ export default function App() {
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (files.length) setImporting({ files, target: pickTarget.current });
+          if (files.length) importFiles(files, pickTarget.current);
         }}
       />
       {!focus && (
@@ -584,6 +649,7 @@ export default function App() {
           onExport={() => void exportDoc()}
           onEditNotation={() => setNotationOpen("macros")}
           onShowHistory={() => setHistoryOpen(true)}
+          onShare={() => void shareDoc()}
           references={references}
           onPrint={() => void printDoc()}
           onAsk={ask}
@@ -749,7 +815,7 @@ export default function App() {
             else if (target === "insert") {
               dropEditor.current?.focus();
               dropEditor.current?.dispatchEvent(new CustomEvent("theoremis:insert-files", { detail: files }));
-            } else setImporting({ files, target });
+            } else importFiles(files, target);
           }}
         />
       )}
@@ -763,6 +829,10 @@ export default function App() {
           updates={updates}
           lean={lean}
           onChatgptChange={changeChatgpt}
+          onRestart={async () => {
+            await workspace.flush();
+            await relaunch();
+          }}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => {
             setSettings(next);
@@ -792,6 +862,18 @@ export default function App() {
           {notice.path && (
             <button type="button" className="text-button" onClick={() => void revealItemInDir(notice.path!).catch(() => {})}>
               {isMac ? "Show in Finder" : "Show in folder"}
+            </button>
+          )}
+          {notice.action && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                notice.action!.run();
+                setNotice(null);
+              }}
+            >
+              {notice.action.label}
             </button>
           )}
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setNotice(null)}>

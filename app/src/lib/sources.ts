@@ -93,7 +93,7 @@ export function fileKind(file: File): FileKind {
 }
 
 export const ACCEPTED_FILES =
-  ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.tex,.ltx,.md,.markdown,.txt,.rst,.org,.html,.htm,.docx,.ipynb,.csv,.tsv,.py,.sage,.jl,.m,.r,.lean,.hs,.rs,.c,.h,.cpp,.java,.js,.ts,.json,.wl,.nb,.gp,.mac,.v,.thy,.agda,.sh,.bib,image/*,application/pdf,text/*";
+  ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.tex,.ltx,.md,.markdown,.txt,.rst,.org,.html,.htm,.docx,.ipynb,.csv,.tsv,.py,.sage,.jl,.m,.r,.lean,.hs,.rs,.c,.h,.cpp,.java,.js,.ts,.json,.wl,.nb,.gp,.mac,.v,.thy,.agda,.sh,.bib,.theoremis,image/*,application/pdf,text/*";
 
 async function decodeText(file: Blob): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());

@@ -14,6 +14,8 @@ interface Props {
   updates: Updates;
   lean: LeanApi;
   onChatgptChange: (session: ChatGptSession) => void;
+  /** Saves what's pending and restarts Theoremis, to use another workspace folder. */
+  onRestart: () => Promise<void>;
   onClose: () => void;
   onSaved: (settings: Settings) => void;
 }
@@ -52,7 +54,7 @@ function LeanSection({ lean }: { lean: LeanApi }) {
   );
 }
 
-export function SettingsDialog({ settings, chatgpt, updates, lean, onChatgptChange, onClose, onSaved }: Props) {
+export function SettingsDialog({ settings, chatgpt, updates, lean, onChatgptChange, onRestart, onClose, onSaved }: Props) {
   const [displayName, setDisplayName] = useState(settings.displayName);
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl);
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
@@ -144,6 +146,8 @@ export function SettingsDialog({ settings, chatgpt, updates, lean, onChatgptChan
             </label>
           </section>
 
+          <WorkspaceSection onRestart={onRestart} />
+
           <LeanSection lean={lean} />
 
           <section className="settings-section">
@@ -208,5 +212,81 @@ export function SettingsDialog({ settings, chatgpt, updates, lean, onChatgptChan
         </footer>
       </form>
     </div>
+  );
+}
+
+/**
+ * Where the workspace lives. In a folder Dropbox, iCloud Drive or OneDrive shares, co-authors
+ * and other computers work on the same documents; Theoremis never saves over their changes.
+ */
+function WorkspaceSection({ onRestart }: { onRestart: () => Promise<void> }) {
+  const [folder, setFolder] = useState<{ path: string; chosen: boolean; missing: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.workspaceFolder().then(setFolder, (err) => setError(errorMessage(err)));
+  }, []);
+
+  const choose = async (copy: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const path = await api.chooseWorkspaceFolder(copy);
+      if (path) await onRestart();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h3>
+        Workspace
+        <span className="settings-section__tag">{folder?.chosen ? "Your folder" : "On this computer"}</span>
+      </h3>
+      <div className="field">
+        <span>Folder</span>
+        <code className="workspace-path" title={folder?.path}>
+          {folder?.path ?? "…"}
+        </code>
+        {folder?.missing && <small className="workspace-missing">{folder.missing} isn’t available, so Theoremis is using its own folder until it is.</small>}
+        <small>
+          Keep the workspace in a folder Dropbox, iCloud Drive or OneDrive shares to work on it from other computers or with co-authors. If a document changes in two
+          places at once, Theoremis keeps both versions. Theoremis restarts to use another folder.
+        </small>
+      </div>
+      <div className="workspace-actions">
+        <button type="button" className="button button--ghost button--small" disabled={busy} onClick={() => void choose(true)}>
+          Move to a folder…
+        </button>
+        <button type="button" className="button button--ghost button--small" disabled={busy} onClick={() => void choose(false)}>
+          Open a shared folder…
+        </button>
+        {folder?.chosen && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={async () => {
+              await api.resetWorkspaceFolder();
+              await onRestart();
+            }}
+          >
+            Use Theoremis’s own folder
+          </button>
+        )}
+      </div>
+      <small className="workspace-note">
+        Moving copies your documents into the folder, beside anything already there, and leaves the originals where they are. Opening a shared folder uses
+        the documents in it as they are.
+      </small>
+      {error && (
+        <p className="dialog__error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }

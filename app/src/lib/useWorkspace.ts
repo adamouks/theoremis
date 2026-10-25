@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, errorMessage } from "./api";
+import { api, errorMessage, SaveConflict } from "./api";
 import { createDocument, withSummary } from "./doc";
 import { exampleWorkspace } from "./seed";
 import { newId } from "./text";
@@ -47,6 +47,8 @@ export function useWorkspace() {
   const [summaries, setSummaries] = useState<DocumentSummary[]>([]);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  /** What happened when the open document was changed elsewhere, for the interface to say. */
+  const [elsewhere, setElsewhere] = useState<{ kind: "reloaded" } | { kind: "kept-both"; copyId: string; title: string } | null>(null);
 
   const current = useRef<Doc | null>(null);
   const dirty = useRef(false);
@@ -67,6 +69,43 @@ export function useWorkspace() {
       [...list.filter((s) => s.id !== summary.id), summary].sort((a, b) => a.createdAt - b.createdAt),
     );
   }, []);
+
+  /**
+   * The open document was changed on another computer while it had edits here: theirs stays as
+   * the document, and these edits are kept beside it as a copy, so neither is lost.
+   */
+  const keepBoth = useCallback(
+    async (attempted: Doc) => {
+      const mine = current.current?.id === attempted.id ? current.current : attempted;
+      const now = Date.now();
+      const copy = withSummary({
+        ...mine,
+        id: newId(),
+        title: `${mine.title.trim() || "Untitled"} (your version)`,
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      try {
+        await api.copyAssets(attempted.id, copy.id);
+        recordSummary(await api.saveDocument(copy));
+        const theirs = await api.loadDocument(attempted.id);
+        if (current.current?.id === attempted.id) {
+          current.current = theirs;
+          dirty.current = false;
+          contentChanged.current = false;
+          setDoc(theirs);
+        }
+        recordSummary(withSummary(theirs));
+        setSaveState("saved");
+        setElsewhere({ kind: "kept-both", copyId: copy.id, title: copy.title });
+      } catch (err) {
+        console.error("Couldn't keep both versions", err);
+        setSaveState("error");
+      }
+    },
+    [recordSummary],
+  );
 
   const flush = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -94,6 +133,10 @@ export function useWorkspace() {
         recordSummary(summary);
         if (!dirty.current) setSaveState("saved");
       } catch (err) {
+        if (err instanceof SaveConflict) {
+          await keepBoth(next);
+          return;
+        }
         console.error("Failed to save document", err);
         if (current.current?.id === next.id) {
           dirty.current = true;
@@ -102,7 +145,7 @@ export function useWorkspace() {
         setSaveState("error");
       }
     });
-  }, [enqueue, recordSummary]);
+  }, [enqueue, recordSummary, keepBoth]);
 
   const updateDoc = useCallback(
     (fn: (doc: Doc) => Doc, kind: ChangeKind = "content") => {
@@ -286,6 +329,15 @@ export function useWorkspace() {
     [createProject, updateProject, recordSummary, enqueue, openDocument],
   );
 
+  /** Adds a document made elsewhere (a shared one, opened from its file) and opens it. */
+  const adoptDocument = useCallback(
+    async (doc: Doc) => {
+      recordSummary(await enqueue(() => api.saveDocument(withSummary(doc))));
+      await openDocument(doc.id);
+    },
+    [recordSummary, enqueue, openDocument],
+  );
+
   /** Adds the example project, "Figurate numbers", and opens its first document. */
   const addExample = useCallback(async () => {
     const example = exampleWorkspace();
@@ -310,6 +362,44 @@ export function useWorkspace() {
 
   const currentDocId = useCallback(() => current.current?.id ?? null, []);
 
+  /**
+   * Picks up what other computers and co-authors changed: the open document, if its file
+   * changed and it has no edits here (with edits, the next save keeps both), and, when
+   * `everything`, the list of projects and documents.
+   */
+  const refreshFromDisk = useCallback(
+    async (everything: boolean) => {
+      const open = current.current;
+      if (open && !dirty.current) {
+        const changed = await api.changedDocuments([open.id]).catch(() => [] as string[]);
+        if (changed.includes(open.id) && current.current?.id === open.id && !dirty.current) {
+          const theirs = await enqueue(() => api.loadDocument(open.id)).catch(() => null);
+          if (theirs && current.current?.id === open.id && !dirty.current) {
+            current.current = theirs;
+            setDoc(theirs);
+            recordSummary(withSummary(theirs));
+            setElsewhere({ kind: "reloaded" });
+          }
+        }
+      } else if (open && dirty.current) {
+        void flush();
+      }
+      if (!everything) return;
+      const ws = await api.loadWorkspace().catch(() => null);
+      if (!ws) return;
+      // Projects added elsewhere join the list; ones added here stay.
+      const known = new Set(ws.projects.map((p) => p.id));
+      const projectsNext = [...ws.projects, ...projectsRef.current.filter((p) => !known.has(p.id))];
+      projectsRef.current = projectsNext;
+      setProjects(projectsNext);
+      setSummaries((list) => {
+        const onDisk = new Set(ws.documents.map((d) => d.id));
+        return [...ws.documents, ...list.filter((s) => !onDisk.has(s.id) && s.id === current.current?.id)].sort((a, b) => a.createdAt - b.createdAt);
+      });
+    },
+    [enqueue, recordSummary, flush],
+  );
+
   return {
     loaded,
     loadError,
@@ -320,6 +410,10 @@ export function useWorkspace() {
     saveState,
     /** Saves pending edits now; resolves once they're on disk. */
     flush,
+    refreshFromDisk,
+    adoptDocument,
+    elsewhere,
+    clearElsewhere: () => setElsewhere(null),
     openDocument,
     updateDoc,
     mutateDocument,

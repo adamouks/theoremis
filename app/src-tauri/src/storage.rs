@@ -4,8 +4,16 @@
 //!
 //! Documents are stored as the frontend sends them. The backend only reads the few header
 //! fields it needs to list them, so the document format can grow without touching Rust.
+//!
+//! The workspace can live in a folder a sync service shares (Dropbox, iCloud Drive, OneDrive),
+//! so co-authors and other computers may change a document while it's open here. The store
+//! remembers each document's file as it last read or wrote it, and won't save over a file that
+//! has changed since: the save reports a conflict instead, and the frontend keeps both.
 
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -68,11 +76,57 @@ pub struct Workspace {
 
 pub struct WorkspaceStore {
     dir: PathBuf,
+    /// A fingerprint of each document's file as this app last read or wrote it.
+    known: Mutex<HashMap<String, u64>>,
+}
+
+fn fingerprint(bytes: &[u8]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl WorkspaceStore {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir }
+        Self {
+            dir,
+            known: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    fn remember(&self, id: &str, bytes: &[u8]) {
+        self.known
+            .lock()
+            .expect("known lock poisoned")
+            .insert(id.to_string(), fingerprint(bytes));
+    }
+
+    fn remembered(&self, id: &str) -> Option<u64> {
+        self.known
+            .lock()
+            .expect("known lock poisoned")
+            .get(id)
+            .copied()
+    }
+
+    /// Of `ids`, the documents whose files changed since this app last read or wrote them:
+    /// another computer or a co-author saved them.
+    pub async fn changed(&self, ids: &[String]) -> AppResult<Vec<String>> {
+        let mut changed = Vec::new();
+        for id in ids {
+            let Some(expected) = self.remembered(id) else {
+                continue;
+            };
+            match tokio::fs::read(self.document_path(id)?).await {
+                Ok(bytes) if fingerprint(&bytes) != expected => changed.push(id.clone()),
+                _ => {}
+            }
+        }
+        Ok(changed)
     }
 
     fn projects_path(&self) -> PathBuf {
@@ -141,18 +195,29 @@ impl WorkspaceStore {
 
     pub async fn load_document(&self, id: &str) -> AppResult<Value> {
         let bytes = tokio::fs::read(self.document_path(id)?).await?;
-        Ok(serde_json::from_slice(&bytes)?)
+        let value = serde_json::from_slice(&bytes)?;
+        self.remember(id, &bytes);
+        Ok(value)
     }
 
-    /// Saves a document and returns its summary. The document must carry the summary fields.
-    pub async fn save_document(&self, document: &Value) -> AppResult<DocumentSummary> {
+    /// Saves a document and returns its summary, or `None` without saving if its file changed
+    /// since this app last read or wrote it. The document must carry the summary fields.
+    pub async fn save_document(&self, document: &Value) -> AppResult<Option<DocumentSummary>> {
         let summary: DocumentSummary = serde_json::from_value(document.clone())
             .map_err(|err| AppError::msg(format!("Invalid document: {err}")))?;
         if !is_valid_id(&summary.project_id) {
             return Err(AppError::msg("Invalid project id"));
         }
         let path = self.document_path(&summary.id)?;
-        write_atomic(&path, &serde_json::to_vec(document)?).await?;
+        if let Some(expected) = self.remembered(&summary.id)
+            && let Ok(on_disk) = tokio::fs::read(&path).await
+            && fingerprint(&on_disk) != expected
+        {
+            return Ok(None);
+        }
+        let bytes = serde_json::to_vec(document)?;
+        write_atomic(&path, &bytes).await?;
+        self.remember(&summary.id, &bytes);
         // Keep a version now and then, once there's something to keep. Losing one is no reason
         // to fail the save.
         let versions = self.versions(&summary.id).await.unwrap_or_default();
@@ -165,7 +230,35 @@ impl WorkspaceStore {
         {
             let _ = self.keep_version(&summary.id, document, None, now).await;
         }
-        Ok(summary)
+        Ok(Some(summary))
+    }
+
+    /// A document's media files, by name.
+    pub async fn assets(&self, document_id: &str) -> AppResult<Vec<String>> {
+        let mut names = Vec::new();
+        let mut entries = match tokio::fs::read_dir(self.assets_dir(document_id)?).await {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(names),
+            Err(err) => return Err(err.into()),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            if let Some(name) = entry.file_name().to_str()
+                && is_valid_asset_name(name)
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// Copies a document's media to another document, e.g. a copy kept after a conflict.
+    pub async fn copy_assets(&self, from: &str, to: &str) -> AppResult<()> {
+        for name in self.assets(from).await? {
+            let (bytes, _) = self.read_asset(from, &name).await?;
+            self.save_asset(to, &name, &bytes).await?;
+        }
+        Ok(())
     }
 
     /// Deletes a document, its media and its history.
@@ -289,6 +382,56 @@ impl WorkspaceStore {
         }
         Ok(self.documents_dir().join(format!("{id}.json")))
     }
+}
+
+/// Copies the workspace in `from` into `to`, for moving it into a shared folder. Files `to`
+/// already has are kept, so joining a folder a co-author shares loses nothing of theirs; the
+/// project lists are merged. Nothing in `from` is removed.
+pub async fn copy_workspace(from: &Path, to: &Path) -> AppResult<()> {
+    tokio::fs::create_dir_all(to).await?;
+    for folder in ["documents", "assets", "history"] {
+        copy_missing(&from.join(folder), &to.join(folder)).await?;
+    }
+    let read = |path: PathBuf| async move {
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => serde_json::from_slice::<Vec<Project>>(&bytes).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
+    };
+    let mut projects = read(to.join("projects.json")).await;
+    for project in read(from.join("projects.json")).await {
+        if !projects.iter().any(|p| p.id == project.id) {
+            projects.push(project);
+        }
+    }
+    write_atomic(
+        &to.join("projects.json"),
+        &serde_json::to_vec_pretty(&projects)?,
+    )
+    .await
+}
+
+fn copy_missing<'a>(
+    from: &'a Path,
+    to: &'a Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = AppResult<()>> + Send + 'a>> {
+    Box::pin(async move {
+        let mut entries = match tokio::fs::read_dir(from).await {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(err.into()),
+        };
+        tokio::fs::create_dir_all(to).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let target = to.join(entry.file_name());
+            if entry.file_type().await?.is_dir() {
+                copy_missing(&entry.path(), &target).await?;
+            } else if !tokio::fs::try_exists(&target).await? {
+                tokio::fs::copy(entry.path(), &target).await?;
+            }
+        }
+        Ok(())
+    })
 }
 
 /// The words in a document's blocks.
@@ -432,7 +575,11 @@ mod tests {
         }];
         store.save_projects(&projects).await.unwrap();
 
-        let summary = store.save_document(&document("b", 20)).await.unwrap();
+        let summary = store
+            .save_document(&document("b", 20))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(summary.status.as_deref(), Some("draft"));
         assert_eq!(summary.pending, 1);
         store.save_document(&document("a", 10)).await.unwrap();
@@ -566,6 +713,97 @@ mod tests {
 
         store.delete_document("d1").await.unwrap();
         assert!(!dir.path().join("history/d1").exists());
+    }
+
+    #[tokio::test]
+    async fn never_saves_over_a_change_made_elsewhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::new(dir.path().to_path_buf());
+        let mut doc = document("d1", 1);
+        assert!(store.save_document(&doc).await.unwrap().is_some());
+        assert!(store.changed(&["d1".into()]).await.unwrap().is_empty());
+
+        // A co-author's sync replaces the file.
+        let path = dir.path().join("documents/d1.json");
+        let mut theirs = doc.clone();
+        theirs["title"] = json!("Their title");
+        std::fs::write(&path, serde_json::to_vec(&theirs).unwrap()).unwrap();
+        assert_eq!(
+            store.changed(&["d1".into(), "nope".into()]).await.unwrap(),
+            ["d1"]
+        );
+
+        doc["title"] = json!("My title");
+        assert!(store.save_document(&doc).await.unwrap().is_none());
+        assert_eq!(
+            store.load_document("d1").await.unwrap()["title"],
+            "Their title"
+        );
+        // Once read, it's theirs this app knows, and saving works again.
+        assert!(store.changed(&["d1".into()]).await.unwrap().is_empty());
+        assert!(store.save_document(&doc).await.unwrap().is_some());
+        // The same bytes written again (a sync touching the file) are no conflict.
+        let same = std::fs::read(&path).unwrap();
+        std::fs::write(&path, same).unwrap();
+        assert!(store.save_document(&doc).await.unwrap().is_some());
+        // A new document, never read here, saves.
+        assert!(
+            store
+                .save_document(&document("d2", 2))
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn copies_media_and_whole_workspaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::new(dir.path().join("mine"));
+        store.save_document(&document("a", 1)).await.unwrap();
+        store.save_asset("a", "fig.png", b"png").await.unwrap();
+        store
+            .save_projects(&[Project {
+                id: "p1".into(),
+                name: "Mine".into(),
+                created_at: 1,
+                collapsed: false,
+            }])
+            .await
+            .unwrap();
+        assert_eq!(store.assets("a").await.unwrap(), ["fig.png"]);
+        store.copy_assets("a", "b").await.unwrap();
+        assert_eq!(store.read_asset("b", "fig.png").await.unwrap().0, b"png");
+        assert!(store.assets("none").await.unwrap().is_empty());
+
+        // A shared folder with a co-author's document and project already in it.
+        let shared = WorkspaceStore::new(dir.path().join("shared"));
+        let mut theirs = document("a", 1);
+        theirs["title"] = json!("Theirs");
+        shared.save_document(&theirs).await.unwrap();
+        shared.save_document(&document("t", 5)).await.unwrap();
+        shared
+            .save_projects(&[Project {
+                id: "p2".into(),
+                name: "Theirs".into(),
+                created_at: 2,
+                collapsed: false,
+            }])
+            .await
+            .unwrap();
+
+        copy_workspace(store.dir(), shared.dir()).await.unwrap();
+        let joined = WorkspaceStore::new(dir.path().join("shared"))
+            .load()
+            .await
+            .unwrap();
+        let ids: Vec<&str> = joined.projects.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, ["p2", "p1"]);
+        assert_eq!(joined.documents.len(), 2);
+        assert_eq!(shared.load_document("a").await.unwrap()["title"], "Theirs");
+        assert_eq!(shared.read_asset("a", "fig.png").await.unwrap().0, b"png");
+        // The original stays where it was.
+        assert!(dir.path().join("mine/documents/a.json").exists());
     }
 
     #[tokio::test]
