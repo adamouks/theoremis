@@ -6,12 +6,16 @@ import { DocumentView } from "./components/DocumentView";
 import { DropOverlay } from "./components/DropOverlay";
 import { ImportBanner } from "./components/ImportBanner";
 import { ImportDialog } from "./components/ImportDialog";
+import { Close } from "./components/Icons";
 import { MediaContext } from "./components/Markdown";
+import { PrintDocument } from "./components/PrintDocument";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "./lib/api";
+import { exportLatex } from "./lib/exportDocument";
 import { blockContext, numberBlocks } from "./lib/doc";
 import { effortKey, resolveEffort } from "./lib/effort";
 import { MODE_LABELS } from "./lib/prompts";
@@ -305,6 +309,47 @@ export default function App() {
     [workspace],
   );
 
+  // Export and print. Where an export went is said for a few seconds, with a way to it.
+  const [notice, setNotice] = useState<{ text: string; path?: string; error?: boolean } | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), notice.error ? 9000 : 6000);
+    return () => window.clearTimeout(id);
+  }, [notice]);
+  const exportDoc = useCallback(async () => {
+    if (!doc) return;
+    try {
+      const path = await exportLatex(doc, settings?.displayName ?? "");
+      if (path) setNotice({ text: `Exported ${path.split(/[\\/]/).pop()}`, path });
+    } catch (err) {
+      setNotice({ text: `Couldn’t export: ${errorMessage(err)}`, error: true });
+    }
+  }, [doc, settings?.displayName]);
+  /** The document being printed. It stays in the page until printing ends, as the dialog reads it late. */
+  const [printing, setPrinting] = useState<string | null>(null);
+  useEffect(() => {
+    if (!printing) return;
+    const done = () => setPrinting(null);
+    window.addEventListener("afterprint", done);
+    const id = window.setTimeout(done, 10 * 60_000);
+    return () => {
+      window.removeEventListener("afterprint", done);
+      window.clearTimeout(id);
+    };
+  }, [printing]);
+  const printDoc = useCallback(async () => {
+    if (!doc) return;
+    setPrinting(doc.id);
+    // Let the print layout render, and its figures load, before the dialog reads the page.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await Promise.all([...document.querySelectorAll<HTMLImageElement>(".print-root img")].map((img) => img.decode().catch(() => {})));
+    try {
+      await api.printPage();
+    } catch (err) {
+      setNotice({ text: `Couldn’t print: ${errorMessage(err)}`, error: true });
+    }
+  }, [doc]);
+
   // Global shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -323,6 +368,12 @@ export default function App() {
       } else if (mod && !e.shiftKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
         pickFiles("new");
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "p" && doc) {
+        e.preventDefault();
+        void printDoc();
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === "e" && doc) {
+        e.preventDefault();
+        void exportDoc();
       } else if (mod && e.key === ".") {
         e.preventDefault();
         setFocus((f) => !f);
@@ -348,7 +399,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onboarding, newDocument, pickFiles, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen]);
+  }, [onboarding, newDocument, pickFiles, ask, acceptSuggestion, doc, focus, settingsOpen, paletteOpen, printDoc, exportDoc]);
 
   const commands: Command[] = [
     { id: "new-doc", label: "New document", hint: shortcut("N"), run: () => newDocument() },
@@ -358,7 +409,13 @@ export default function App() {
       run: () => void workspace.createProject("Untitled project"),
     },
     { id: "import", label: "Import a paper, notes or file…", hint: shortcut("O"), run: () => pickFiles("new") },
-    ...(doc ? [{ id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") }] : []),
+    ...(doc
+      ? [
+          { id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") },
+          { id: "export-latex", label: "Export as LaTeX…", hint: shortcut("⇧E"), run: () => void exportDoc() },
+          { id: "print", label: "Print or save as PDF…", hint: shortcut("P"), run: () => void printDoc() },
+        ]
+      : []),
     { id: "example", label: "Add the example project", run: () => void workspace.addExample() },
     { id: "tex", label: texMode ? "Show rendered document" : "Show TeX source", run: () => setTexMode((t) => !t) },
     { id: "focus", label: focus ? "Exit focus mode" : "Focus mode", hint: shortcut("."), run: () => setFocus((f) => !f) },
@@ -476,6 +533,8 @@ export default function App() {
           onTexMode={setTexMode}
           onToggleFocus={() => setFocus((f) => !f)}
           onDelete={() => void workspace.deleteDocument(doc.id)}
+          onExport={() => void exportDoc()}
+          onPrint={() => void printDoc()}
           onAsk={ask}
           onAcceptSuggestion={acceptSuggestion}
           onRejectSuggestion={rejectSuggestion}
@@ -644,6 +703,20 @@ export default function App() {
             void refreshModels();
           }}
         />
+      )}
+      {doc && printing === doc.id && <PrintDocument doc={doc} numbered={numbered} author={settings?.displayName ?? ""} />}
+      {notice && (
+        <div className={`toast${notice.error ? " toast--error" : ""}`} role={notice.error ? "alert" : "status"}>
+          <span className="toast__text">{notice.text}</span>
+          {notice.path && (
+            <button type="button" className="text-button" onClick={() => void revealItemInDir(notice.path!).catch(() => {})}>
+              {isMac ? "Show in Finder" : "Show in folder"}
+            </button>
+          )}
+          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+            <Close size={9} />
+          </button>
+        </div>
       )}
     </div>
     </MediaContext.Provider>

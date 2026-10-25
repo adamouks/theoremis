@@ -284,6 +284,54 @@ async fn delete_asset(
     state.workspace.delete_asset(&document, &name).await
 }
 
+/// Asks where to save a file Theoremis made, such as an export, suggesting its name, and writes it
+/// there. The bytes travel as the raw body, the suggested name and the kind of file (for the
+/// dialog's filter) in the `x-name` and `x-kind` headers. Returns where it went, or nothing if
+/// the person cancelled. Only the person picks the path, so the interface can't write elsewhere.
+#[tauri::command]
+async fn save_file(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    request: tauri::ipc::Request<'_>,
+) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::msg("Expected the file's bytes."));
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .ok_or_else(|| AppError::msg(format!("Missing {name}")))
+    };
+    let (name, kind) = (header("x-name")?, header("x-kind")?);
+    let extension = name.rsplit_once('.').map(|(_, e)| e.to_string());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_parent(&window).set_file_name(&name);
+    if let Some(extension) = &extension {
+        dialog = dialog.add_filter(&kind, &[extension.as_str()]);
+    }
+    dialog.save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.ok().flatten() else {
+        return Ok(None);
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| AppError::msg("Theoremis can't save to that location."))?;
+    tokio::fs::write(&path, bytes).await?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// Opens the system's print dialog for the page, which can also save it as a PDF.
+#[tauri::command]
+fn print_page(webview: tauri::Webview) -> AppResult<()> {
+    Ok(webview.print()?)
+}
+
 /// Serves `theoremis://localhost/<document id>/<file>` (on Windows,
 /// `http://theoremis.localhost/…`) from the document's media, so figures load like any image.
 async fn serve_asset(app: tauri::AppHandle, path: String) -> tauri::http::Response<Vec<u8>> {
@@ -338,6 +386,7 @@ fn percent_decode(text: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .register_asynchronous_uri_scheme_protocol("theoremis", |ctx, request, responder| {
@@ -389,6 +438,8 @@ pub fn run() {
             delete_document,
             save_asset,
             delete_asset,
+            save_file,
+            print_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Theoremis");

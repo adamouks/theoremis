@@ -7,6 +7,7 @@ import remarkMath from "remark-math";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { assetUrl } from "../lib/api";
 import { GraphBlock } from "./graph/GraphBlock";
+import { graphPicture } from "./graph/graphPicture";
 import { normalizeMath, unnumberEnvironments } from "../lib/text";
 import { Check, Copy } from "./Icons";
 
@@ -78,13 +79,29 @@ function Figure({ src, alt, title }: { src?: string; alt?: string; title?: strin
  * How graph blocks inside this Markdown behave: in a document they can be edited, and edits
  * replace their code in the block's source. Elsewhere (replies, notes) they are read-only.
  */
-export const GraphContext = createContext<{ editable: boolean; compact: boolean; onChange?: (before: string, after: string) => void }>({
+export const GraphContext = createContext<{
+  editable: boolean;
+  compact: boolean;
+  onChange?: (before: string, after: string) => void;
+  /** For print: a picture of the graph on paper, not the interactive graph. */
+  print?: boolean;
+}>({
   editable: false,
   compact: true,
 });
 
 function GraphFence({ language, code }: { language: "graph" | "graph3d"; code: string }) {
-  const { editable, compact, onChange } = useContext(GraphContext);
+  const { editable, compact, onChange, print } = useContext(GraphContext);
+  if (print) {
+    const picture = graphPicture(code, language === "graph3d" ? 3 : 2);
+    return picture ? (
+      <span className="figure figure--graph">
+        <img src={picture} alt="" />
+      </span>
+    ) : (
+      <pre className="print-code">{code}</pre>
+    );
+  }
   return (
     <GraphBlock
       code={code}

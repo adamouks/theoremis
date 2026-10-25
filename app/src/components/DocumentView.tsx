@@ -29,6 +29,9 @@ interface Props {
   onTexMode: (tex: boolean) => void;
   onToggleFocus: () => void;
   onDelete: () => void;
+  /** Saves the document as LaTeX, and opens the print dialog (which can save a PDF). */
+  onExport: () => void;
+  onPrint: () => void;
   onAsk: (blockId: string, mode: Mode) => void;
   onAcceptSuggestion: (blockId: string) => void;
   onRejectSuggestion: (blockId: string) => void;
@@ -58,6 +61,8 @@ export function DocumentView({
   onTexMode,
   onToggleFocus,
   onDelete,
+  onExport,
+  onPrint,
   onAsk,
   onAcceptSuggestion,
   onRejectSuggestion,
@@ -283,6 +288,30 @@ export function DocumentView({
                 >
                   <span className="menu__spacer" />
                   Copy as Markdown + LaTeX
+                </button>
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onExport();
+                  }}
+                >
+                  <span className="menu__spacer" />
+                  Export as LaTeX…
+                  <span className="menu__hint">{shortcut("⇧E")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onPrint();
+                  }}
+                >
+                  <span className="menu__spacer" />
+                  Print or save as PDF…
+                  <span className="menu__hint">{shortcut("P")}</span>
                 </button>
                 <div className="menu__divider" />
                 <button

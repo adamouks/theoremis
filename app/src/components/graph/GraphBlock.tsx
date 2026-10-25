@@ -5,6 +5,7 @@ import type { Window2D } from "../../lib/graph/plot2d";
 import { Close } from "../Icons";
 import { ExpressionList } from "./ExpressionList";
 import { Graph2D, itemColor, type GraphHandle } from "./Graph2D";
+import { offerPicture } from "./graphPicture";
 
 // three.js is large; load it with the first 3D graph.
 const Graph3D = lazy(() => import("./Graph3D"));
@@ -60,6 +61,9 @@ export function GraphBlock({ code, dim, editable, compact, onChange }: Props) {
     write(spec.viewLine === null ? `${code.replace(/\n+$/, "")}\n${line}` : replaceLine(code, spec.viewLine, line));
     setMoved(null);
   };
+
+  // A 3D graph can only be pictured from the screen, for print and export.
+  useEffect(() => (dim === 3 ? offerPicture(code, 3, () => graph.current?.capture?.() ?? null) : undefined), [code, dim]);
 
   const height = spec.view.height ?? (compact ? 230 : 330);
   const colorOf = useCallback((item: Item) => itemColor(spec, item), [spec]);

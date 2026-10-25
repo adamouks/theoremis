@@ -33,6 +33,7 @@ sha2 = "0.10"
 base64 = "0.22"
 getrandom = "0.3"
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util"] }

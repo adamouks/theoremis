@@ -181,6 +181,17 @@ export default function Graph3D({ spec, scope, height, colorOf, handle }: Props)
         s.request();
       },
       rotate: () => setRotating((r) => !r),
+      capture: () => {
+        const s = stage.current;
+        if (!s) return null;
+        // On paper: drawn once on white and read back at once, before the buffer is cleared.
+        s.renderer.setClearColor(0xffffff);
+        s.renderer.render(s.scene, s.camera);
+        const picture = s.renderer.domElement.toDataURL("image/png");
+        s.renderer.setClearColor(0x1a1b21);
+        s.request();
+        return picture;
+      },
     }),
     [],
   );

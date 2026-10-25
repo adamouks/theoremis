@@ -94,6 +94,15 @@ export const api = {
   saveAsset: (documentId: string, name: string, bytes: Uint8Array) =>
     invoke<string>("save_asset", bytes, { headers: { "x-document": documentId, "x-name": name } }),
   deleteAsset: (documentId: string, name: string) => invoke<void>("delete_asset", { document: documentId, name }),
+
+  /**
+   * Asks where to save a file, suggesting `name`, and writes `bytes` there. `kind` names the
+   * type for the dialog, e.g. "LaTeX source". Resolves to the path, or null if cancelled.
+   */
+  saveFile: (name: string, kind: string, bytes: Uint8Array) =>
+    invoke<string | null>("save_file", bytes, { headers: { "x-name": name, "x-kind": kind } }),
+  /** The system's print dialog for the page, which can also save it as a PDF. */
+  printPage: () => invoke<void>("print_page"),
 };
 
 /** Where the webview loads a document's media from (the `theoremis` URI scheme). */
