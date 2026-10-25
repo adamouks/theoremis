@@ -49,6 +49,8 @@ export interface Settings {
   onboarded: boolean;
   /** The collaborator works on its own (Auto) instead of only proposing (Manual). */
   autoMode: boolean;
+  /** With Auto on, it convenes a seminar of members instead of working alone. */
+  seminar: boolean;
   /** The effort chosen for each model, keyed by `effortKey`. */
   efforts: Record<string, string>;
 }
@@ -60,6 +62,7 @@ export interface SettingsUpdate {
   lastModel?: ModelRef;
   onboarded?: boolean;
   autoMode?: boolean;
+  seminar?: boolean;
   efforts?: Record<string, string>;
 }
 
@@ -150,6 +153,9 @@ export interface Block {
   byAgent?: { threadId: string; messageId: string };
 }
 
+/** How the collaborator works: proposes (Manual), acts (Auto), or convenes a seminar that acts. */
+export type Work = "manual" | "auto" | "seminar";
+
 export type Mode = "ask" | "explore" | "gaps" | "challenge" | "formalize";
 
 export interface Context {
@@ -183,6 +189,8 @@ export interface ThreadMessage {
   attachments?: Attachment[];
   /** What the collaborator did on its own, for a reply in Auto mode. */
   agent?: AgentRun;
+  /** Who the seminar convened and what each did, for a reply in Seminar mode. */
+  seminar?: SeminarRun;
   createdAt: number;
 }
 
@@ -215,6 +223,38 @@ export type AgentStep =
       /** Lean accepted a proof of the block and it was marked verified. */
       verified?: boolean;
     };
+
+/**
+ * A reply in Seminar mode: the chair convenes a few members, each with one objective, who work
+ * on the document at the same time; the chair then sums up (the reply's `content`).
+ */
+export interface SeminarRun {
+  status: "convening" | "working" | "summing" | "done" | "stopped" | "failed";
+  members: SeminarMember[];
+  /** Every member's changes to the document, in the order they happened, for Undo. */
+  changes: AgentChange[];
+  undone?: boolean;
+  finishedAt?: number;
+}
+
+export interface SeminarMember {
+  id: string;
+  /** "Prover", "Skeptic", "Formalizer"… */
+  role: string;
+  /** What it set out to do, in its own words. */
+  objective: string;
+  /** The blocks the chair gave it. */
+  blocks: string[];
+  status: "waiting" | "working" | "done" | "stopped" | "failed";
+  steps: AgentStep[];
+  /** What it told the chair when it finished. */
+  report?: string;
+  error?: string;
+  /** How many of the seminar's changes are its. */
+  changed: number;
+  startedAt?: number;
+  finishedAt?: number;
+}
 
 export type AgentChange =
   /** `before` is null for an insertion and `after` for a deletion; `index` is where the block was. */

@@ -9,7 +9,8 @@ import { Check, ChevronDown, Retry } from "../Icons";
 import { Markdown, type CodeFooter } from "../Markdown";
 import { Orb, Shimmer, Sparks, type ClickSparkHandle } from "./effects";
 
-const WORKING: Record<string, string> = {
+/** What a tool is doing while it runs. */
+export const WORKING: Record<string, string> = {
   read_document: "Reading",
   list_documents: "Looking through the project",
   edit_block: "Rewriting",
@@ -21,12 +22,12 @@ const WORKING: Record<string, string> = {
   check_graph: "Checking a graph",
 };
 
-type ToolStep = Extract<AgentStep, { kind: "tool" }>;
+export type ToolStep = Extract<AgentStep, { kind: "tool" }>;
 
 type Group = { kind: "text"; text: string; at: number } | { kind: "tools"; steps: { step: ToolStep; at: number }[]; at: number };
 
 /** "8s", "1m 12s". */
-function elapsed(ms: number) {
+export function elapsed(ms: number) {
   const s = Math.max(1, Math.round(ms / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -134,7 +135,7 @@ export function AgentTimeline({
   );
 }
 
-function StepRow({ step, doc, onShowBlock }: { step: ToolStep; doc: Doc; onShowBlock: (blockId: string) => void }) {
+export function StepRow({ step, doc, onShowBlock }: { step: ToolStep; doc: Doc; onShowBlock: (blockId: string) => void }) {
   const [open, setOpen] = useState(false);
   const sparks = useRef<ClickSparkHandle>(null);
   const wasPending = useRef(step.pending);

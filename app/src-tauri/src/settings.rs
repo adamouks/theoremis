@@ -30,6 +30,8 @@ pub struct StoredSettings {
     pub onboarded: bool,
     /// The collaborator works on its own (Auto) instead of only proposing (Manual).
     pub auto_mode: bool,
+    /// With Auto on, the collaborator convenes a seminar of members instead of working alone.
+    pub seminar: bool,
     /// The effort chosen for each model, keyed `provider:model`, e.g. `chatgpt:gpt-5` → `high`.
     pub efforts: BTreeMap<String, String>,
 }
@@ -45,6 +47,7 @@ pub struct SettingsView {
     pub last_model: Option<ModelRef>,
     pub onboarded: bool,
     pub auto_mode: bool,
+    pub seminar: bool,
     pub efforts: BTreeMap<String, String>,
 }
 
@@ -58,6 +61,7 @@ pub struct SettingsUpdate {
     pub last_model: Option<ModelRef>,
     pub onboarded: Option<bool>,
     pub auto_mode: Option<bool>,
+    pub seminar: Option<bool>,
     /// Replaces every model's chosen effort.
     pub efforts: Option<BTreeMap<String, String>>,
 }
@@ -148,6 +152,9 @@ fn apply_update(settings: &mut StoredSettings, update: SettingsUpdate) -> AppRes
     if let Some(auto_mode) = update.auto_mode {
         settings.auto_mode = auto_mode;
     }
+    if let Some(seminar) = update.seminar {
+        settings.seminar = seminar;
+    }
     if let Some(efforts) = update.efforts {
         settings.efforts = efforts;
     }
@@ -177,6 +184,7 @@ fn view_of(settings: &StoredSettings, env: &EnvVars) -> SettingsView {
         last_model: settings.last_model.clone(),
         onboarded: settings.onboarded,
         auto_mode: settings.auto_mode,
+        seminar: settings.seminar,
         efforts: settings.efforts.clone(),
     }
 }
@@ -304,8 +312,9 @@ mod tests {
         assert_eq!(stored.last_model.unwrap().provider, Provider::Chatgpt);
         // People upgrading from a build without the introduction see it once.
         assert!(!stored.onboarded);
-        // The collaborator stays in Manual until someone chooses Auto.
+        // The collaborator stays in Manual until someone chooses Auto or Seminar.
         assert!(!stored.auto_mode);
+        assert!(!stored.seminar);
         let saved = serde_json::to_string(&StoredSettings::default()).unwrap();
         assert!(!saved.contains("openaiApiKey"));
     }
@@ -320,6 +329,7 @@ mod tests {
                 system_prompt: Some("Be rigorous.".into()),
                 onboarded: Some(true),
                 auto_mode: Some(true),
+                seminar: Some(true),
                 efforts: Some(BTreeMap::from([("chatgpt:gpt-6".into(), "high".into())])),
                 ..Default::default()
             })
@@ -329,6 +339,7 @@ mod tests {
         assert_eq!(reloaded.snapshot().system_prompt, "Be rigorous.");
         assert!(reloaded.view().onboarded);
         assert!(reloaded.view().auto_mode);
+        assert!(reloaded.view().seminar);
         assert_eq!(reloaded.view().efforts["chatgpt:gpt-6"], "high");
 
         #[cfg(unix)]

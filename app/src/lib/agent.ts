@@ -21,7 +21,8 @@ const AGENT_STATUSES = ["open", "tested", "draft"] as const;
 /** The note on a statement Lean verified in Auto mode, so it reads differently from a person's check. */
 export const AUTO_VERIFIED_NOTE = "checked in Lean (Auto)";
 
-const object = (properties: Record<string, unknown>, required: string[] = []) => ({
+/** A JSON Schema object for a tool's arguments. */
+export const object = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: "object",
   properties,
   required,
@@ -154,6 +155,11 @@ export interface AgentEnv {
   lean(code: string): Promise<LeanCheck>;
   /** The reply doing the work, recorded on what it writes. */
   origin: { threadId: string; messageId: string };
+  /**
+   * In Seminar mode, each block's text as this member last saw it. Others change the document
+   * at the same time, so an edit to a block that changed since is held back until it reads again.
+   */
+  seen?: Map<string, string>;
 }
 
 const failed = (output: string, label: string, detail?: string): ToolOutcome => ({ output, step: { label, detail, ok: false }, changes: [] });
@@ -187,11 +193,11 @@ export async function runTool(env: AgentEnv, handles: Handles, call: ToolCall): 
       case "list_documents":
         return listDocuments(env);
       case "edit_block":
-        return await env.transact((doc) => editBlock(doc, handles, env.origin, args));
+        return await env.transact((doc) => guarded(doc, env, handles, args.block, () => editBlock(doc, handles, env.origin, args)));
       case "insert_block":
-        return await env.transact((doc) => insertBlock(doc, handles, env.origin, args));
+        return await env.transact((doc) => guarded(doc, env, handles, undefined, () => insertBlock(doc, handles, env.origin, args)));
       case "delete_block":
-        return await env.transact((doc) => deleteBlock(doc, handles, args));
+        return await env.transact((doc) => guarded(doc, env, handles, args.block, () => deleteBlock(doc, handles, args)));
       case "set_status":
         return await env.transact((doc) => setStatus(doc, handles, args));
       case "set_title":
@@ -215,8 +221,43 @@ async function readDocument(env: AgentEnv, handles: Handles, other: string): Pro
     const doc = await env.read(other);
     return { output: documentAsText(doc), step: { label: `Read “${doc.title || "Untitled"}”`, ok: true }, changes: [] };
   }
-  const output = await env.transact((doc) => ({ doc, result: documentForAgent(doc, handles) }));
+  const output = await env.transact((doc) => {
+    remember(env, doc);
+    return { doc, result: documentForAgent(doc, handles) };
+  });
   return { output, step: { label: "Read the document", ok: true }, changes: [] };
+}
+
+/** Notes the text of `doc`'s blocks as this member has now seen them (Seminar mode). */
+export function remember(env: AgentEnv, doc: Doc, only?: string) {
+  if (!env.seen) return;
+  for (const b of doc.blocks) if (!only || b.id === only) env.seen.set(b.id, b.source);
+}
+
+/**
+ * Runs a change unless `target` changed since this member last saw it (Seminar mode), and
+ * notes what it then saw. All in one read-modify-write, so nobody can slip in between.
+ */
+function guarded(doc: Doc, env: AgentEnv, handles: Handles, target: unknown, change: () => Step): Step {
+  const id = target === undefined ? undefined : handles.id(target);
+  const now = id ? doc.blocks.find((b) => b.id === id) : undefined;
+  const known = id ? env.seen?.get(id) : undefined;
+  if (now && known !== undefined && known !== now.source) {
+    return unchanged(
+      doc,
+      failed(
+        `${handles.of(now.id)} changed since you last read it: another member is working on it. Call read_document, then decide whether your change still applies.`,
+        `Held back from overwriting ${labelOf(doc, now.id)}, which another member had just changed`,
+      ),
+    );
+  }
+  const step = change();
+  const touched = step.result.step.blockId ?? id;
+  if (touched) {
+    if (step.doc.blocks.some((b) => b.id === touched)) remember(env, step.doc, touched);
+    else env.seen?.delete(touched);
+  }
+  return step;
 }
 
 function listDocuments(env: AgentEnv): ToolOutcome {
@@ -438,7 +479,7 @@ export function checkGraph(args: Record<string, unknown>): ToolOutcome {
 }
 
 /** Takes back everything a run changed, newest first. Blocks edited since keep their place. */
-export function undoRun(doc: Doc, run: AgentRun): Doc {
+export function undoRun(doc: Doc, run: Pick<AgentRun, "changes">): Doc {
   let next = doc;
   for (const change of [...run.changes].reverse()) {
     if (change.kind === "header") {

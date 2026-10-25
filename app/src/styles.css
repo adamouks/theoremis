@@ -4491,6 +4491,16 @@ a:hover {
 
 /* Auto mode ------------------------------------------------------------------ */
 
+/* The effort gauge and the switch, at the end of the chips' row or, when it is full, the next. */
+.composer__controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .mode-switch {
   display: inline-flex;
   margin-left: auto;
@@ -4517,7 +4527,7 @@ a:hover {
   color: var(--text-strong);
 }
 
-.mode-switch button.is-on:last-child {
+.mode-switch button.is-on:not(:first-child) {
   background: var(--accent-soft);
   color: var(--accent-text-hover);
 }
@@ -4736,6 +4746,123 @@ a:hover {
   letter-spacing: 0.02em;
   color: var(--text-4);
   white-space: nowrap;
+}
+
+/* A Seminar reply: a card for each member the chair convened, in its own tint, with its
+   objective, what it is doing and what it reported (components/ai/SeminarView.tsx). */
+
+.seminar-members {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seminar-member {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px 10px 10px;
+  border-radius: 8px;
+  background: var(--tint-wash);
+  box-shadow: inset 0 0 0 1px var(--tint-line);
+  transition: box-shadow 0.4s ease;
+  animation: ai-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.seminar-member.is-working {
+  box-shadow:
+    inset 0 0 0 1px var(--tint-glow),
+    0 0 18px var(--tint-wash);
+}
+
+.seminar-member__orb {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  transition: opacity 0.4s ease;
+}
+
+.seminar-member.is-waiting .seminar-member__orb {
+  opacity: 0.4;
+}
+
+.seminar-member__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seminar-member__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.seminar-member__role {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tint);
+}
+
+.seminar-member__status {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-4);
+  white-space: nowrap;
+}
+
+.seminar-member.is-failed .seminar-member__status {
+  color: var(--danger);
+}
+
+/* In the member's own words. */
+.seminar-member__objective {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.seminar-member__now {
+  font-size: 12px;
+}
+
+.seminar-member__report {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--tint-line);
+  font-size: 12px;
+  color: var(--ai-text);
+}
+
+.seminar-member__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.seminar-member__more {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.seminar-member__steps {
+  padding-top: 6px;
+}
+
+.seminar-summary {
+  padding-top: 2px;
 }
 
 /* The collaborator's AI surfaces: orbs, light and motion (components/ai). Canvas effects stop

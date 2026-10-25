@@ -15,7 +15,7 @@ Theoremis is a desktop app with two halves joined by Tauri's IPC, plus a separat
 │  App.tsx ── Sidebar · DocumentView (blocks) · Collaborator · dialogs           │
 │     │                                                                          │
 │     ├─ useWorkspace     documents in memory, autosave                          │
-│     ├─ useCollaborator  threads, replies, revisions, Auto-mode runs            │
+│     ├─ useCollaborator  threads, replies, revisions, Auto and Seminar runs     │
 │     ├─ useImport        files → documents, part by part                        │
 │     ├─ useLean          Lean status, setup, checks                             │
 │     ├─ components/ai/   the collaborator's orbs, reasoning and run timeline    │
@@ -67,7 +67,9 @@ status a person chose.
 original/proposed comparison, new material as a dashed suggestion block, and both can be
 undone after accepting. In **Auto** mode, which the person switches on, it works on the
 document itself with tools. Every change it makes is recorded on its reply and marked in the
-gutter, and one click undoes them all. Even in Auto it can't mark anything proved or adopted,
+gutter, and one click undoes them all. **Seminar** mode is Auto with several members working
+at once, under the same rules and with one Undo for all of them. Even in Auto it can't mark
+anything proved or adopted,
 which are judgments only the mathematician can make, and it can mark a statement verified
 only by getting Lean to accept a proof. Imports also write on their own, but only into a new
 document or onto the end of one the person chose.
@@ -130,8 +132,10 @@ from the header fields `storage.rs` reads.
 
 `useCollaborator` drives a conversation; `lib/prompts.ts` decides what the model sees.
 
-The collaborator works in one of two modes, a setting (`autoMode`) switched in the composer:
-**Manual** (the default), where replies propose, and **Auto**, where it acts (below).
+The collaborator works in one of three ways, switched in the composer and saved in settings
+(`autoMode`, and `seminar` beside it): **Manual** (the default), where replies propose;
+**Auto**, where it acts; and **Seminar**, where several members it convenes act at once (both
+below).
 
 **What a request contains.** The system message holds the collaborator's rules (rigor, the
 "Proposed revision" / "Proposed addition" conventions, the graph syntax), the person's own
@@ -159,7 +163,8 @@ The message text always says what was attached, so a model that can't see images
 
 ### Auto mode
 
-In Auto mode a reply is a loop (`runAgent` in `useCollaborator`, tools in `lib/agent.ts`):
+In Auto mode a reply is a loop (`agentLoop` in `lib/agentLoop.ts`, run by `runAgent` in
+`useCollaborator`; the tools are in `lib/agent.ts`):
 
 ```
 request (document with block handles, thread, tools)
@@ -219,6 +224,47 @@ Auto needs a model that calls tools (`callsTools` in `lib/types.ts`): every Chat
 Ollama models whose `/api/show` capabilities include `tools`. With any other model, Auto
 works like Manual and the composer says so.
 
+### Seminar mode
+
+In Seminar mode the collaborator chairs a small seminar on the request (`runSeminar` in
+`useCollaborator`, its pieces in `lib/seminar.ts`):
+
+```
+the chair: one request whose only tool is convene
+   │   members: a role, an objective in the member's own words, the blocks it concerns
+   ▼
+the members work at the same time, each in its own Auto loop, on the one document
+   │   ChatGPT: three at a time · Ollama: one at a time
+   ▼
+the chair: one request without tools, from the members' reports ──► the reply
+```
+
+- **The chair only convenes.** Its request offers one tool, `convene`: one to four members,
+  each with a role that fits the request (Prover, Skeptic, Formalizer, Illustrator, Editor…),
+  an objective in its own voice, and its blocks. `readConvene` trims what comes back and tells
+  two members with one role apart ("Prover 2"). A chair that names nobody gets one member who
+  takes the whole request.
+- **A member is an Auto reply with a brief.** It gets the Auto rules and tools, its
+  objective, the others' objectives and its blocks (`buildMemberMessages`), and runs
+  `agentLoop` for up to 12 rounds. What it says last is its report to the chair.
+- **Members don't overwrite each other.** Each remembers every block's text as it last saw
+  it (`AgentEnv.seen`, updated by `read_document` and by its own changes). An edit or deletion
+  of a block that has changed since is refused, with a result telling the member to read the
+  document again. The check and the change run in one `transactDocument`, so nothing slips in
+  between. Adding blocks is always allowed.
+- **One Undo for the seminar.** Every member's changes go into one list in the order they
+  happened, so `undoRun` takes them back newest first, across members.
+- **Stop reaches everyone.** The hook tracks every request in flight for the reply
+  (`inFlight`), and Stop cancels them all. Members still waiting don't start, and the
+  summary is skipped.
+- **Concurrency follows the provider** (`concurrency`). ChatGPT serves members together,
+  three at a time, and a fourth starts when one finishes. A local Ollama model would only
+  queue them, so they take turns.
+- **Later turns know who did what.** The history sends the summary with each member's role,
+  objective and steps (`describeSeminar`).
+
+Seminar needs a model that calls tools, as Auto does, and works like Manual without one.
+
 ### How the collaborator looks
 
 The collaborator's AI surfaces live in `components/ai/`. Motion there carries information
@@ -226,12 +272,13 @@ about what the model is doing; none of it is decoration on its own.
 
 | Piece | Shows |
 | --- | --- |
-| `Orb` | What the collaborator is doing (`Activity`). Idle: the sphere only turns. Thinking: dots wander across it. Acting (a tool running in Auto): its bands twist like a Rubik's cube. The header's orb follows the reply that is streaming |
+| `Orb` | What the collaborator is doing (`Activity`). Idle: the sphere only turns. Thinking: dots wander across it. Acting (a tool running in Auto): its bands twist like a Rubik's cube. The header's orb follows the reply that is streaming, and is acting while any seminar member's tool runs. Members' orbs are tinted (`MEMBER_TINTS`) |
 | `EffortGauge` | How hard the model thinks: a dial with a tick per effort the model offers, in the composer |
 | `Shimmer` | Status text while something runs: "Thinking…", "Checking with Lean…" |
 | `Reasoning` | What the model thought. It opens while the model thinks, folds a second after the answer starts, and then says how long it thought (`thoughtSeconds`) |
 | `AgentTimeline` | An Auto reply: its text, with each tool on a rail between. Lean's errors open under Details. It ends with what changed, Undo, and how long the run took (`finishedAt`) |
-| `ComposerBeam`, `AutoLabel` | A light around the composer and a lit "Auto" while Auto works on its own |
+| `SeminarView` | A Seminar reply: a card for each member with its orb, role, objective, what it is doing now, its report, and its steps under Show work. Then the chair's summary, what changed and Undo |
+| `ComposerBeam`, `AutoLabel` | A light around the composer and a lit "Auto" or "Seminar" while the collaborator works on its own |
 | `Sparks` | Two moments worth marking: Lean verifying a statement, and the person taking in a proposal (Accept, Insert) |
 | `Spotlight`, `ThreadEdges` | Proposal cards lit under the pointer, and soft edges where the thread scrolls |
 
@@ -432,7 +479,7 @@ person as they are.
   scheme.
 - Lean files are screened before they run; the screening is a precaution, not a sandbox.
 - In Manual mode collaborator output can't change a document without a click, and accepted
-  changes can be undone. In Auto mode it changes only the document it was asked about (other
+  changes can be undone. In Auto and Seminar modes it changes only the document it was asked about (other
   documents are read-only to it), every change is recorded and undoable, and it can't give
   the statuses that mean a person or Lean checked something.
 - The model never runs code itself. The only thing Auto can run is a Lean check, which goes
@@ -473,7 +520,8 @@ as production.
 - **Pure logic is tested in isolation** with Vitest: equation numbering, proposals, prompt
   assembly, transcript parsing, figure detection, converters, the expression language, graph
   specs and geometry, and every Auto-mode tool and Undo, run against plain documents with a
-  fake Lean. Most of the app's intelligence lives in `lib/` precisely so it can be
+  fake Lean. Seminar's convening, its limit on members at once, and the guard against
+  overwriting another member's change are tested the same way. Most of the app's intelligence lives in `lib/` precisely so it can be
   tested without a browser.
 - **Rust** has unit tests for every module, including token handling, the vault (with a fake
   key store), Lean screening and verdicts (with Lean's real output), storage, and streaming
@@ -481,8 +529,9 @@ as production.
   server that replays recorded responses (`providers/test_server.rs`).
 - **The interface** is exercised by driving the built frontend in a browser with Tauri's IPC
   mocked (`@tauri-apps/api/mocks`), which covers imports, graphs and the collaborator,
-  including a scripted Auto run with Lean, graphs, Undo and Stop, without a model or a
-  desktop window.
+  including a scripted Auto run with Lean, graphs, Undo and Stop, and a scripted seminar
+  (members at once, one held back from overwriting another, Undo, Stop, turns on Ollama),
+  without a model or a desktop window.
 
 ## Where to make a change
 
@@ -492,6 +541,7 @@ as production.
 | Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), and its working label in `components/ai/AgentTimeline.tsx` |
 | Name or describe a new effort | `LABELS` and `NOTES` in `lib/effort.ts`, and its place in `sort_efforts` (`providers/mod.rs`) |
 | Change the collaborator's effects or their colours | The wrappers in `components/ai/effects.tsx`. Leave `src/vendor/` as upstream wrote it, and list any change in `src/vendor/README.md` |
+| Change how a seminar is convened, or how many members and rounds it may take | `CHAIR` and `membership` in `lib/prompts.ts`; `CONVENE`, `MAX_MEMBERS`, `MEMBER_ROUNDS` and `concurrency` in `lib/seminar.ts` |
 | Add a collaborator mode | `Mode` in `lib/types.ts`, `MODE_INSTRUCTIONS` in `lib/prompts.ts`, the composer in `Collaborator.tsx` |
 | Add a model provider | `providers/` (stream `StreamEvent`s from `ChatMessage`s), `Provider` in both `providers/mod.rs` and `lib/types.ts`, `list_models` and `run_chat` in `lib.rs` |
 | Add a block field | `Block` in `lib/types.ts`. Rust needs no change |

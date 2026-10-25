@@ -20,7 +20,7 @@ Mathematical work often happens across separate editors, chats, and proof assist
 - **Write mathematics naturally.** Markdown and LaTeX editing, numbered equations (including rows of `align`), and a toggle between rendered output and TeX source.
 - **Keep track of what's established.** Statements can be *open, tested, draft, adopted, proved,* or *verified*. Status indicators in the gutter and sidebar show where a proof stands.
 - **Reason alongside AI.** Highlight a step or work in one of four modes: **Explore**, **Find gaps**, **Challenge**, and **Formalize**. Feedback stays attached to its document context.
-- **Manual or Auto.** In **Manual** the collaborator proposes and you decide. In **Auto** it does the work itself: it edits the document, writes Lean and checks it until Lean accepts, draws graphs, and reads the rest of the project. Every change is marked, listed step by step, and undone in one click. Only Lean can make a statement *verified*, even in Auto.
+- **Manual, Auto or Seminar.** In **Manual** the collaborator proposes and you decide. In **Auto** it does the work itself: it edits the document, writes Lean and checks it until Lean accepts, draws graphs, and reads the rest of the project. In **Seminar** it convenes a few members, each with its own objective (a Prover, a Skeptic, a Formalizer…), who work on the document at the same time while you watch each one's orb. Every change is marked, listed step by step, and undone in one click. Only Lean can make a statement *verified*, even in Auto.
 - **Check proofs with Lean 4.** Generate Lean code using Mathlib, run **Check with Lean**, inspect errors or dependencies on `sorry`, and mark a step verified only when the checker accepts it under the app's checks.
 - **Bring in your research.** Import PDFs, photos of handwritten notes or a blackboard, LaTeX, Markdown, Word, HTML, Jupyter notebooks, CSV or code. A vision model transcribes them into statements with statuses, figures are copied straight from the PDF, and every paragraph links back to its page in the original.
 - **Graph in 2D and 3D.** `graph` and `graph3d` blocks put a graphing calculator in the document: curves, implicit curves, regions, polar and parametric plots, sliders you can play, surfaces and curves in space. The collaborator can draw them too.
@@ -43,7 +43,7 @@ This separates **exploration**, which AI can help accelerate, from **verificatio
 | Area | Implementation |
 | --- | --- |
 | Desktop and UI | [Tauri](https://tauri.app), Rust, React, TypeScript |
-| AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models; a reasoning effort per model, from Instant to Max as each model allows; Manual proposals or an Auto agent with document, Lean and graph tools |
+| AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models; a reasoning effort per model, from Instant to Max as each model allows; Manual proposals, an Auto agent with document, Lean and graph tools, or a Seminar of agents working at once |
 | Formal checking | Lean 4, Mathlib, `lake env lean`, theorem/axiom inspection |
 | Imports and graphs | pdf.js (text layer, rendering, figure detection), vision models, three.js, an expression language compiled without `eval` |
 | Documents | Local JSON files, autosave, per-document conversation threads |

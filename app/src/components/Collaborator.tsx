@@ -19,6 +19,7 @@ import {
   type StoredLeanCheck,
   type Thread,
   type ThreadMessage,
+  type Work,
 } from "../lib/types";
 import { splitProposals, type NumberedBlock } from "../lib/doc";
 import { numberEquations } from "../lib/text";
@@ -26,6 +27,7 @@ import { AgentTimeline } from "./ai/AgentTimeline";
 import { AutoLabel, ComposerBeam, Orb, Shimmer, Sparks, Spotlight, ThreadEdges, type Activity, type ClickSparkHandle } from "./ai/effects";
 import { EffortGauge } from "./ai/EffortGauge";
 import { Reasoning } from "./ai/Reasoning";
+import { pendingTool, SeminarView } from "./ai/SeminarView";
 import { AutoTextarea } from "./AutoTextarea";
 import { SelectionCorners, type Pin } from "./Block";
 import {
@@ -53,7 +55,23 @@ const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
 const SUGGESTIONS = {
   manual: ["Where is this argument weakest?", "What should I prove next?", "Explain the key idea plainly", "Suggest a cleaner proof"],
   auto: ["Prove the open statements and check them in Lean", "Find the gaps in this proof and fix them", "Formalize the main theorem in Lean", "Graph the functions in this document"],
+  seminar: ["Prove the main theorem, look for gaps and check it in Lean", "Review this proof from every angle", "Formalize the main result and graph it", "Fill the gaps, then tighten the exposition"],
 };
+
+/** The three ways the collaborator works, as the composer offers them. */
+const WORKS: { work: Work; label: string; title: string }[] = [
+  { work: "manual", label: "Manual", title: "Manual: the collaborator proposes. Nothing changes until you accept it." },
+  {
+    work: "auto",
+    label: "Auto",
+    title: "Auto: the collaborator works on the document itself, editing, checking proofs in Lean and drawing graphs, and you can undo all of it.",
+  },
+  {
+    work: "seminar",
+    label: "Seminar",
+    title: "Seminar: the collaborator convenes up to four members, each with its own objective, who work on the document at the same time. You can undo all of it.",
+  },
+];
 
 export interface CollaboratorActions {
   onSend: (mode: Mode, text: string, attachments: Attachment[]) => void;
@@ -68,9 +86,9 @@ export interface CollaboratorActions {
   onEditRevision: (threadId: string, messageId: string) => void;
   onRejectRevision: (threadId: string, messageId: string) => void;
   onUndoRevision: (threadId: string, messageId: string) => void;
-  /** Takes back everything an Auto reply changed. */
+  /** Takes back everything an Auto or Seminar reply changed. */
   onUndoAgent: (threadId: string, messageId: string) => void;
-  onSetAutoMode: (auto: boolean) => void;
+  onSetWork: (work: Work) => void;
   onInsertSuggestion: (threadId: string, messageId: string) => void;
   onSelectModel: (model: ModelRef) => void;
   onRefreshModels: () => void;
@@ -93,8 +111,8 @@ interface Props extends CollaboratorActions {
   hasModel: boolean;
   /** Whether the chosen model sees images. */
   vision: boolean;
-  /** Auto mode is chosen, and whether the chosen model can work in it (call tools). */
-  autoMode: boolean;
+  /** How the collaborator is chosen to work, and whether the chosen model can act (call tools). */
+  work: Work;
   canAct: boolean;
   /** How hard the chosen model can think, and the effort chosen for it. */
   efforts: Effort[];
@@ -140,10 +158,11 @@ export function Collaborator(props: Props) {
 
   const threads = [...doc.threads].sort((a, b) => b.updatedAt - a.updatedAt);
   const last = thread?.messages[thread.messages.length - 1];
-  // The header orb: idle until a reply streams, then thinking, or acting while one of its tools runs.
-  const steps = streamingMessageId ? thread?.messages.find((m) => m.id === streamingMessageId)?.agent?.steps : undefined;
-  const lastStep = steps?.[steps.length - 1];
-  const activity: Activity = !streamingMessageId ? "idle" : lastStep?.kind === "tool" && lastStep.pending ? "acting" : "thinking";
+  // The header orb: idle until a reply streams, then thinking, or acting while one of its tools
+  // runs (any member's, in a seminar).
+  const live = streamingMessageId ? thread?.messages.find((m) => m.id === streamingMessageId) : undefined;
+  const acting = !!pendingTool(live?.agent?.steps) || !!live?.seminar?.members.some((m) => pendingTool(m.steps));
+  const activity: Activity = !streamingMessageId ? "idle" : acting ? "acting" : "thinking";
 
   return (
     <aside className="panel">
@@ -210,7 +229,7 @@ export function Collaborator(props: Props) {
             <EmptyThread
               hasModel={props.hasModel}
               providers={props.providers}
-              autoMode={props.autoMode && props.canAct}
+              work={props.canAct ? props.work : "manual"}
               onSuggest={(text) => setPrefill({ text, nonce: Date.now() })}
               onOpenSettings={props.onOpenSettings}
               shortcut={shortcut}
@@ -260,9 +279,9 @@ export function Collaborator(props: Props) {
         numbered={props.numbered}
         hasModel={props.hasModel}
         vision={props.vision}
-        autoMode={props.autoMode}
+        work={props.work}
         canAct={props.canAct}
-        onSetAutoMode={props.onSetAutoMode}
+        onSetWork={props.onSetWork}
         efforts={props.efforts}
         effort={props.effort}
         onSetEffort={props.onSetEffort}
@@ -283,15 +302,15 @@ export function Collaborator(props: Props) {
 function EmptyThread({
   hasModel,
   providers,
-  autoMode,
+  work,
   onSuggest,
   onOpenSettings,
   shortcut,
 }: {
   hasModel: boolean;
   providers: ProviderStatus[];
-  /** Auto mode is on and the model can work in it. */
-  autoMode: boolean;
+  /** How the collaborator will work: as chosen, if the model can act. */
+  work: Work;
   onSuggest: (text: string) => void;
   onOpenSettings: () => void;
   shortcut: (keys: string) => string;
@@ -320,14 +339,16 @@ function EmptyThread({
     <div className="thread-empty">
       <Orb size={32} />
       <p>
-        {autoMode
-          ? "Tell the collaborator what to do. It edits the document, checks proofs in Lean and draws graphs, and you can undo all of it."
-          : "Select a step in your proof to ask about it, find gaps, or challenge it."}
+        {work === "seminar"
+          ? "Put a request to a seminar. The collaborator convenes a few members, each with its own objective, who work on the document at once, and you can undo all of it."
+          : work === "auto"
+            ? "Tell the collaborator what to do. It edits the document, checks proofs in Lean and draws graphs, and you can undo all of it."
+            : "Select a step in your proof to ask about it, find gaps, or challenge it."}
       </p>
       <kbd>{shortcut("L")}</kbd>
       {hasModel && (
         <div className="suggestions" aria-label="Suggestions">
-          {SUGGESTIONS[autoMode ? "auto" : "manual"].map((text) => (
+          {SUGGESTIONS[work].map((text) => (
             <button key={text} type="button" className="suggestion" onClick={() => onSuggest(text)}>
               {text}
             </button>
@@ -459,10 +480,13 @@ function AssistantMessage({
     if (box) sparks.current?.spark(at.left + at.width / 2 - box.left, at.top + at.height / 2 - box.top);
   };
   const agent = message.agent;
-  // Once complete, proposals move out of the prose into their own cards. Auto replies make
-  // their changes instead of proposing them.
-  const parts = streaming || agent ? null : splitProposals(message.content);
-  const liveChanges = !!agent && agent.changes.length > 0 && !agent.undone;
+  const seminar = message.seminar;
+  // Once complete, proposals move out of the prose into their own cards. Auto and Seminar
+  // replies make their changes instead of proposing them.
+  const acted = !!agent || !!seminar;
+  const parts = streaming || acted ? null : splitProposals(message.content);
+  const run = agent ?? seminar;
+  const liveChanges = !!run && run.changes.length > 0 && !run.undone;
   const prose = parts && (parts.revision || parts.addition) ? parts.body : message.content;
   const inserted = message.insertedBlockId ? doc.blocks.find((b) => b.id === message.insertedBlockId) : undefined;
   const insertedPin = message.insertedBlockId ? numbered.find((n) => n.block.id === message.insertedBlockId)?.suggestionIndex : undefined;
@@ -497,13 +521,20 @@ function AssistantMessage({
         <CollaboratorGlyph />
         <span className="msg__author msg__author--ai">Collaborator</span>
         <span className="msg__time">
-          {MODE_LABELS[message.mode]}
-          {/* An Auto reply's badge leaves no room; its effort is in the run's summary instead. */}
-          {message.effort && !agent ? ` · ${effortLabel(message.effort)}` : ""} · {clockTime(message.createdAt)}
+          {/* An Auto or Seminar reply's badge leaves little room: its effort is in the run's summary
+              instead, and a plain request goes without saying. */}
+          {acted && message.mode === "ask" ? "" : `${MODE_LABELS[message.mode]} · `}
+          {message.effort && !acted ? `${effortLabel(message.effort)} · ` : ""}
+          {clockTime(message.createdAt)}
         </span>
         {agent && (
           <span className="badge-auto" title="Auto mode: the collaborator worked on the document itself.">
             {streaming ? <AutoLabel /> : "Auto"}
+          </span>
+        )}
+        {seminar && (
+          <span className="badge-auto" title="Seminar mode: members the collaborator convened worked on the document at the same time.">
+            {streaming ? <AutoLabel>Seminar</AutoLabel> : "Seminar"}
           </span>
         )}
         <span className="msg__spacer" />
@@ -526,7 +557,20 @@ function AssistantMessage({
         />
       )}
 
-      {agent ? (
+      {seminar ? (
+        <SeminarView
+          run={seminar}
+          summary={message.content}
+          doc={doc}
+          model={message.model?.model}
+          startedAt={message.createdAt}
+          effort={message.effort}
+          streaming={streaming}
+          leanFooter={streaming ? undefined : leanFooter}
+          onShowBlock={actions.onShowBlock}
+          onUndo={() => actions.onUndoAgent(thread.id, message.id)}
+        />
+      ) : agent ? (
         <AgentTimeline
           run={agent}
           doc={doc}
@@ -611,9 +655,9 @@ function AssistantMessage({
         </div>
       )}
 
-      {!streaming && (message.content || message.error) && (
+      {!streaming && (message.content || message.error || (isLast && canRetry && !liveChanges)) && (
         <div className="msg__actions">
-          {message.content && !agent && !message.insertedBlockId && !parts?.addition && !message.revision && (
+          {message.content && !acted && !message.insertedBlockId && !parts?.addition && !message.revision && (
             <button type="button" className="text-button" onClick={() => actions.onInsertSuggestion(thread.id, message.id)}>
               Insert as suggestion
             </button>
@@ -754,9 +798,9 @@ function Composer({
   numbered,
   hasModel,
   vision,
-  autoMode,
+  work,
   canAct,
-  onSetAutoMode,
+  onSetWork,
   efforts,
   effort,
   onSetEffort,
@@ -775,9 +819,9 @@ function Composer({
   numbered: NumberedBlock[];
   hasModel: boolean;
   vision: boolean;
-  autoMode: boolean;
+  work: Work;
   canAct: boolean;
-  onSetAutoMode: (auto: boolean) => void;
+  onSetWork: (work: Work) => void;
   efforts: Effort[];
   effort: string | undefined;
   onSetEffort: (effort: string) => void;
@@ -860,11 +904,13 @@ function Composer({
   const unseen = !vision && ready.some((a) => a.images.length > 0);
 
   const choices = numbered.filter((n) => !n.block.suggestion && n.block.source.trim());
+  /** Works on the document on its own, in Auto or Seminar, and the model can. */
+  const acts = work !== "manual" && canAct;
 
   return (
     <div className="composer-wrap">
-      <div className={`composer${focused ? " is-focused" : ""}${autoMode && canAct && streaming ? " is-working" : ""}`}>
-        {autoMode && canAct && streaming && <ComposerBeam />}
+      <div className={`composer${focused ? " is-focused" : ""}${acts && streaming ? " is-working" : ""}`}>
+        {acts && streaming && <ComposerBeam />}
         {files.length > 0 && (
           <div className="composer__files">
             {files.map((f) => (
@@ -881,8 +927,10 @@ function Composer({
             ))}
           </div>
         )}
-        {autoMode && hasModel && !canAct && (
-          <p className="composer__warning">This model can’t use tools, so Auto works like Manual with it. Choose a ChatGPT model, or an Ollama model that supports tools, such as qwen3.</p>
+        {work !== "manual" && hasModel && !canAct && (
+          <p className="composer__warning">
+            This model can’t use tools, so {work === "seminar" ? "Seminar" : "Auto"} works like Manual with it. Choose a ChatGPT model, or an Ollama model that supports tools, such as qwen3.
+          </p>
         )}
         {unseen && <p className="composer__warning">This model can’t see images, so only the text Theoremis reads from these files is sent. Choose a vision model to show it the pictures.</p>}
         <div className="composer__chips">
@@ -923,28 +971,24 @@ function Composer({
           <button type="button" className="chip chip--add" title="Attach images, PDFs or files" onClick={() => fileInput.current?.click()}>
             + File
           </button>
-          <EffortGauge efforts={efforts} value={effort} onChange={onSetEffort} />
-          <div className="mode-switch" role="radiogroup" aria-label="How the collaborator works">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!autoMode}
-              className={autoMode ? undefined : "is-on"}
-              title="Manual: the collaborator proposes. Nothing changes until you accept it."
-              onClick={() => onSetAutoMode(false)}
-            >
-              Manual
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={autoMode}
-              className={autoMode ? "is-on" : undefined}
-              title="Auto: the collaborator works on the document itself, editing, checking proofs in Lean and drawing graphs, and you can undo all of it."
-              onClick={() => onSetAutoMode(true)}
-            >
-              {autoMode ? <AutoLabel /> : "Auto"}
-            </button>
+          {/* Together, so that when the row is too narrow they move to the next line as one. */}
+          <div className="composer__controls">
+            <EffortGauge efforts={efforts} value={effort} onChange={onSetEffort} />
+            <div className="mode-switch" role="radiogroup" aria-label="How the collaborator works">
+              {WORKS.map((w) => (
+                <button
+                  key={w.work}
+                  type="button"
+                  role="radio"
+                  aria-checked={work === w.work}
+                  className={work === w.work ? "is-on" : undefined}
+                  title={w.title}
+                  onClick={() => onSetWork(w.work)}
+                >
+                  {work === w.work && w.work !== "manual" ? <AutoLabel>{w.label}</AutoLabel> : w.label}
+                </button>
+              ))}
+            </div>
           </div>
           <input
             ref={fileInput}
@@ -968,9 +1012,11 @@ function Composer({
               ? "Connect a model in Settings to ask…"
               : busyElsewhere
                 ? "Waiting for another reply to finish…"
-                : autoMode && canAct
-                  ? "Ask the collaborator to do something: prove, fix, formalize, graph…"
-                  : "Ask a follow-up, or challenge a step…"
+                : acts && work === "seminar"
+                  ? "Ask the seminar to prove, review or formalize…"
+                  : acts
+                    ? "Ask it to prove, fix, formalize or graph…"
+                    : "Ask a follow-up, or challenge a step…"
           }
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}

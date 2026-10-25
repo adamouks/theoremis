@@ -19,6 +19,9 @@ const MUTED = "#9d9ea3";
 const VIOLET = "#b093e5";
 const CYAN = "#71c5df";
 
+/** Each seminar member's colour, in the order the chair convened them; the chair keeps the accent. */
+export const MEMBER_TINTS = ["#c9b3f5", "#9fdcf0", "#b7e4c0", "#f0d39a"];
+
 /** What the collaborator is doing, which decides how its orb moves. */
 export type Activity = "idle" | "thinking" | "acting";
 
@@ -35,8 +38,8 @@ const ORB_STATES: Record<Activity, OrbState> = {
 /** The Rubik's sphere with no moves to make only rotates. */
 const STILL = { moveCount: 0 };
 
-/** The collaborator's presence: a small animated orb in the accent colour. */
-export function Orb({ activity = "idle", size = 20 }: { activity?: Activity; size?: 20 | 32 | 64 }) {
+/** The collaborator's presence: a small animated orb in the accent colour, or a seminar member's tint. */
+export function Orb({ activity = "idle", size = 20, tint }: { activity?: Activity; size?: 20 | 32 | 64; tint?: string }) {
   return (
     <ThinkingOrb
       state={ORB_STATES[activity]}
@@ -44,7 +47,7 @@ export function Orb({ activity = "idle", size = 20 }: { activity?: Activity; siz
       speed={activity === "idle" ? 0.6 : 1}
       size={size}
       theme="dark"
-      color={ACCENT_LIGHT}
+      color={tint ?? ACCENT_LIGHT}
       aria-hidden="true"
       className={`orb orb--${activity}`}
     />
@@ -60,11 +63,11 @@ export function Shimmer({ children }: { children: ReactNode }) {
   );
 }
 
-/** "Auto", lit while Auto mode is on. */
-export function AutoLabel() {
+/** "Auto" or "Seminar", lit while the collaborator works on its own. */
+export function AutoLabel({ children = "Auto" }: { children?: ReactNode }) {
   return (
     <GradientText colors={[ACCENT_LIGHT, VIOLET, CYAN, ACCENT_LIGHT]} animationSpeed={6} variant="flow" className="auto-label">
-      Auto
+      {children}
     </GradientText>
   );
 }

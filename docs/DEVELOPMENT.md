@@ -54,8 +54,10 @@ app/src/                      React + TypeScript interface
   lib/doc.ts                  Statuses, equation numbering, block labels, proposals
   lib/prompts.ts              Collaborator modes and requests to the model
   lib/useWorkspace.ts         Projects, documents, autosave
-  lib/useCollaborator.ts      Thread streaming, revisions, suggestions, Auto-mode runs
+  lib/useCollaborator.ts      Thread streaming, revisions, suggestions, Auto and Seminar runs
   lib/agent.ts                Auto mode's tools, block handles and Undo
+  lib/agentLoop.ts            The loop of model and tools, shared by Auto and Seminar members
+  lib/seminar.ts              Seminar mode: convening members, running them at once
   lib/attachments.ts          Files sent with a question: page images and text
   lib/sources.ts              Reading imports: PDFs, photos, LaTeX, Markdown, Word, HTML, …
   lib/pdf.ts, figures.ts      pdf.js pages and text; finding figures in what a page draws
@@ -110,16 +112,17 @@ The check refuses code involving `#eval`, `run_cmd`, custom elaborators/macros/s
 
 AI-generated reasoning is always labeled *not verified* until a separately checked proof meets the app's verification criteria.
 
-## Manual and Auto
+## Manual, Auto and Seminar
 
-The switch in the collaborator's composer (or `⌘K` → **Collaborator: switch to Auto**) sets how the collaborator works. It's saved in settings as `autoMode`.
+The switch in the collaborator's composer (or `⌘K` → **Collaborator: switch to Auto** / **switch to Seminar**) sets how the collaborator works. It's saved in settings as `autoMode`, with `seminar` beside it.
 
 - **Manual** (the default): replies propose rewrites and additions, which you accept, edit or reject.
 - **Auto**: the collaborator uses tools to read and edit the document, set statuses (open, tested, draft), check Lean files, check graph code, and read other documents in the project. It loops, up to 24 rounds of tool calls per reply, until it's done, and then summarizes.
+- **Seminar**: the collaborator convenes up to four members, each with a role and an objective it states in its own words (a Prover, a Skeptic, a Formalizer…), who work on the document at the same time with the Auto tools, up to 12 rounds each. A member can't overwrite a block another has changed since it last read it. The collaborator then sums up from their reports. With Ollama the members take turns.
 
-Each reply lists its steps, blocks it wrote carry an **AUTO** tag until you edit them, and **Undo all** takes back every change. A statement becomes *verified* in Auto only when Lean accepts a named theorem for it with no `sorry` and only standard axioms; its note then reads "checked in Lean (Auto)".
+Each reply lists its steps (in Seminar, under each member), blocks it wrote carry an **AUTO** tag until you edit them, and **Undo all** takes back every change. A statement becomes *verified* in Auto only when Lean accepts a named theorem for it with no `sorry` and only standard axioms; its note then reads "checked in Lean (Auto)".
 
-Auto needs a model that calls tools: any ChatGPT model, or an Ollama model with the `tools` capability (for example `qwen3`, `llama3.1` or `mistral-small`). With others, Auto works like Manual. How it works is in [architecture.md](../architecture.md#auto-mode).
+Auto and Seminar need a model that calls tools: any ChatGPT model, or an Ollama model with the `tools` capability (for example `qwen3`, `llama3.1` or `mistral-small`). With others, they work like Manual. How they work is in [architecture.md](../architecture.md#auto-mode).
 
 ## Importing research
 

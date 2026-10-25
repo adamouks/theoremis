@@ -1,4 +1,5 @@
 import { describeRun, documentForAgent, type Handles } from "./agent";
+import { describeSeminar, type Member } from "./seminar";
 import { documentAsText } from "./doc";
 import type { Attachment, ChatMessage, Doc, Mode, Thread, ThreadMessage } from "./types";
 
@@ -80,10 +81,10 @@ export function threadImages(thread: Thread): string[] {
 /** The conversation so far, as the model sees it. */
 function history(thread: Thread, images: Map<string, string>): ChatMessage[] {
   return thread.messages
-    .filter((m) => (m.role === "user" ? !m.error : m.content.trim() || (m.agent && describeRun(m.agent))))
+    .filter((m) => (m.role === "user" ? !m.error : m.content.trim() || (m.agent && describeRun(m.agent)) || (m.seminar && describeSeminar(m.seminar))))
     .map((m) => {
       if (m.role !== "user") {
-        const actions = m.agent ? describeRun(m.agent) : "";
+        const actions = m.agent ? describeRun(m.agent) : m.seminar ? describeSeminar(m.seminar) : "";
         return { role: m.role, content: [m.content.trim(), actions].filter(Boolean).join("\n\n") };
       }
       const sent = (m.attachments ?? []).flatMap((a) => a.images).filter((name) => images.has(name));
@@ -126,4 +127,63 @@ export function buildAgentMessages(doc: Doc, thread: Thread, userPrompt: string,
     .filter(Boolean)
     .join("\n\n");
   return [{ role: "system", content: system }, ...history(thread, images)];
+}
+
+const CHAIR = `You are in Seminar mode, chairing a small seminar on the mathematician's request. Decide who should work on it, all at the same time: one to four members, each with a single objective that the others don't share. Choose roles that fit the request, for instance:
+- Prover: writes or repairs a proof.
+- Skeptic: looks for gaps, counterexamples and unstated assumptions, and tests claims numerically.
+- Formalizer: states results in Lean and checks them.
+- Illustrator: draws graphs that make a statement visible.
+- Editor: makes the exposition clear without changing the mathematics.
+A small request needs one or two members; don't convene more than the work needs. Write each objective in the member's own voice, and give each the blocks it concerns. Call convene once and don't do the work yourself.`;
+
+/** The chair's request: decide who works on what. */
+export function buildConveneMessages(doc: Doc, thread: Thread, userPrompt: string, handles: Handles, images: Map<string, string> = new Map()): ChatMessage[] {
+  const system = [COLLABORATOR, CHAIR, userPrompt.trim(), `The document:\n\n${capped(documentForAgent(doc, handles))}`].filter(Boolean).join("\n\n");
+  return [{ role: "system", content: system }, ...history(thread, images)];
+}
+
+function membership(member: Member, all: Member[], handles: Handles): string {
+  const others = all.filter((m) => m !== member);
+  const mine = member.blocks.map((id) => handles.of(id));
+  return [
+    `You are the ${member.role} in a seminar of ${all.length} working on the mathematician's request at the same time. Your objective: ${member.objective}`,
+    others.length ? `The others:\n${others.map((m) => `- ${m.role}: ${m.objective}`).join("\n")}` : "",
+    `- Work only toward your objective, and don't redo another member's work.${mine.length ? ` Your blocks: ${mine.join(", ")}. Change others only if your objective needs it.` : ""}
+- The others change the document while you work. If a tool says a block changed since you read it, call read_document before deciding what to do.
+- When you're done, reply without calling a tool: a short report to the chair of what you did, what you found and what is still open, in at most five sentences.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** A member's request: the Auto rules, its objective, and who else is working. */
+export function buildMemberMessages(
+  doc: Doc,
+  thread: Thread,
+  userPrompt: string,
+  handles: Handles,
+  images: Map<string, string>,
+  member: Member,
+  all: Member[],
+): ChatMessage[] {
+  const system = [COLLABORATOR, AUTO, membership(member, all, handles), userPrompt.trim(), `The document, as you begin:\n\n${capped(documentForAgent(doc, handles))}`]
+    .filter(Boolean)
+    .join("\n\n");
+  return [{ role: "system", content: system }, ...history(thread, images)];
+}
+
+const SUMMARY = `You chaired a seminar on the mathematician's request. The members worked on the document at the same time, and their reports follow. Write the reply to the mathematician: what changed (by label), what Lean verified, where members found problems or disagreed, and what is still open. Be brief, and don't repeat the reports word for word.`;
+
+/** The chair's last request: sum up from the members' reports and the document as it now is. */
+export function buildSummaryMessages(
+  doc: Doc,
+  thread: Thread,
+  userPrompt: string,
+  handles: Handles,
+  reports: { role: string; objective: string; report: string }[],
+): ChatMessage[] {
+  const system = [COLLABORATOR, SUMMARY, userPrompt.trim(), `The document now:\n\n${capped(documentForAgent(doc, handles))}`].filter(Boolean).join("\n\n");
+  const told = reports.map((r) => `${r.role} (${r.objective}):\n${r.report || "(no report)"}`).join("\n\n");
+  return [{ role: "system", content: system }, ...history(thread, new Map()), { role: "user", content: `[The members' reports]\n\n${told}` }];
 }
