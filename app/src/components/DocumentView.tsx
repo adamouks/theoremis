@@ -35,6 +35,8 @@ interface Props {
   onPrint: () => void;
   /** Opens the document's macros and references. */
   onEditNotation: () => void;
+  /** Opens its earlier versions. */
+  onShowHistory: () => void;
   /** The references the document cites, listed at its end. */
   references: CitedReference[];
   onAsk: (blockId: string, mode: Mode) => void;
@@ -69,6 +71,7 @@ export function DocumentView({
   onExport,
   onPrint,
   onEditNotation,
+  onShowHistory,
   references,
   onAsk,
   onAcceptSuggestion,
@@ -306,6 +309,17 @@ export function DocumentView({
                 >
                   <span className="menu__spacer" />
                   Macros and references…
+                </button>
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onShowHistory();
+                  }}
+                >
+                  <span className="menu__spacer" />
+                  Version history…
                 </button>
                 <div className="menu__divider" />
                 <button

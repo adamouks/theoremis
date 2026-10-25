@@ -14,6 +14,7 @@ import type {
   SettingsUpdate,
   StreamEvent,
   ToolSpec,
+  Version,
   Workspace,
 } from "./types";
 
@@ -89,6 +90,11 @@ export const api = {
   loadDocument: (id: string) => invoke<Doc>("load_document", { id }),
   saveDocument: (document: Doc) => invoke<DocumentSummary>("save_document", { document }),
   deleteDocument: (id: string) => invoke<void>("delete_document", { id }),
+  /** A document's kept versions, newest first. */
+  listVersions: (document: string) => invoke<Version[]>("list_versions", { document }),
+  loadVersion: (document: string, version: string) => invoke<Doc>("load_version", { document, version }),
+  /** Keeps the document as saved now, e.g. before an Auto reply changes it. */
+  snapshotDocument: (document: string, label: string) => invoke<Version>("snapshot_document", { document, label }),
 
   /** Keeps a file with a document's media under `name`, an id plus extension such as `3f2a….png`. */
   saveAsset: (documentId: string, name: string, bytes: Uint8Array) =>

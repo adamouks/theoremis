@@ -1,5 +1,6 @@
-//! The workspace on disk: `projects.json`, one JSON file per document, and each document's
-//! media (figures, images, the original of an imported file) in `assets/<document id>/`.
+//! The workspace on disk: `projects.json`, one JSON file per document, each document's media
+//! (figures, images, the original of an imported file) in `assets/<document id>/`, and its
+//! earlier versions in `history/<document id>/`.
 //!
 //! Documents are stored as the frontend sends them. The backend only reads the few header
 //! fields it needs to list them, so the document format can grow without touching Rust.
@@ -38,6 +39,26 @@ pub struct DocumentSummary {
     pub pending: u32,
 }
 
+/// An earlier version of a document, as the history lists it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    pub id: String,
+    /// When it was kept, in milliseconds since the epoch.
+    pub at: i64,
+    /// Why it was kept, when it wasn't simply time: "Before an Auto reply".
+    #[serde(default)]
+    pub label: Option<String>,
+    pub title: String,
+    pub blocks: usize,
+    pub words: usize,
+}
+
+/// How often saving keeps a version, at most: one every ten minutes of work.
+const VERSION_EVERY_MS: i64 = 10 * 60 * 1000;
+/// How many versions a document keeps. Past it the oldest go, unlabelled ones first.
+const MAX_VERSIONS: usize = 60;
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -60,6 +81,13 @@ impl WorkspaceStore {
 
     fn documents_dir(&self) -> PathBuf {
         self.dir.join("documents")
+    }
+
+    fn history_dir(&self, document_id: &str) -> AppResult<PathBuf> {
+        if !is_valid_id(document_id) {
+            return Err(AppError::msg("Invalid document id"));
+        }
+        Ok(self.dir.join("history").join(document_id))
     }
 
     fn assets_dir(&self, document_id: &str) -> AppResult<PathBuf> {
@@ -125,13 +153,100 @@ impl WorkspaceStore {
         }
         let path = self.document_path(&summary.id)?;
         write_atomic(&path, &serde_json::to_vec(document)?).await?;
+        // Keep a version now and then, once there's something to keep. Losing one is no reason
+        // to fail the save.
+        let versions = self.versions(&summary.id).await.unwrap_or_default();
+        let now = now_ms();
+        let empty = summary.title.trim().is_empty() && words(document) == 0;
+        if !empty
+            && versions
+                .first()
+                .is_none_or(|v| now - v.at >= VERSION_EVERY_MS)
+        {
+            let _ = self.keep_version(&summary.id, document, None, now).await;
+        }
         Ok(summary)
     }
 
-    /// Deletes a document and its media.
+    /// Deletes a document, its media and its history.
     pub async fn delete_document(&self, id: &str) -> AppResult<()> {
         ignore_missing(tokio::fs::remove_file(self.document_path(id)?).await)?;
-        ignore_missing(tokio::fs::remove_dir_all(self.assets_dir(id)?).await)
+        ignore_missing(tokio::fs::remove_dir_all(self.assets_dir(id)?).await)?;
+        ignore_missing(tokio::fs::remove_dir_all(self.history_dir(id)?).await)
+    }
+
+    /// A document's kept versions, newest first.
+    pub async fn versions(&self, document_id: &str) -> AppResult<Vec<Version>> {
+        let index = self.history_dir(document_id)?.join("index.json");
+        match tokio::fs::read(&index).await {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Keeps the document as it is on disk now as a version, with why, e.g. before an Auto reply.
+    pub async fn snapshot(&self, document_id: &str, label: &str) -> AppResult<Version> {
+        let document = self.load_document(document_id).await?;
+        self.keep_version(document_id, &document, Some(label.to_string()), now_ms())
+            .await
+    }
+
+    pub async fn load_version(&self, document_id: &str, version: &str) -> AppResult<Value> {
+        if !is_valid_id(version) {
+            return Err(AppError::msg("Invalid version id"));
+        }
+        let path = self
+            .history_dir(document_id)?
+            .join(format!("{version}.json"));
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Err(AppError::msg("That version is no longer kept."))
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    async fn keep_version(
+        &self,
+        document_id: &str,
+        document: &Value,
+        label: Option<String>,
+        at: i64,
+    ) -> AppResult<Version> {
+        let dir = self.history_dir(document_id)?;
+        let mut versions = self.versions(document_id).await?;
+        // Two versions in one millisecond get distinct ids.
+        let mut id = at.to_string();
+        while versions.iter().any(|v| v.id == id) {
+            id.push('b');
+        }
+        write_atomic(
+            &dir.join(format!("{id}.json")),
+            &serde_json::to_vec(document)?,
+        )
+        .await?;
+        let blocks = document["blocks"].as_array();
+        let version = Version {
+            id,
+            at,
+            label,
+            title: document["title"].as_str().unwrap_or("").to_string(),
+            blocks: blocks.map_or(0, Vec::len),
+            words: words(document),
+        };
+        versions.insert(0, version.clone());
+        while versions.len() > MAX_VERSIONS {
+            let at = versions
+                .iter()
+                .rposition(|v| v.label.is_none())
+                .unwrap_or(versions.len() - 1);
+            let gone = versions.remove(at);
+            ignore_missing(tokio::fs::remove_file(dir.join(format!("{}.json", gone.id))).await)?;
+        }
+        write_atomic(&dir.join("index.json"), &serde_json::to_vec(&versions)?).await?;
+        Ok(version)
     }
 
     /// Saves a file of a document's media under `name`, e.g. `3f2a….png`.
@@ -174,6 +289,23 @@ impl WorkspaceStore {
         }
         Ok(self.documents_dir().join(format!("{id}.json")))
     }
+}
+
+/// The words in a document's blocks.
+fn words(document: &Value) -> usize {
+    document["blocks"].as_array().map_or(0, |blocks| {
+        blocks
+            .iter()
+            .filter_map(|b| b["source"].as_str())
+            .map(|s| s.split_whitespace().count())
+            .sum()
+    })
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// Imported PDFs are kept whole, so allow for long papers and scans.
@@ -370,6 +502,70 @@ mod tests {
         assert!(store.save_asset("../d", "x.png", b"x").await.is_err());
         assert!(store.read_asset("d1", "../../settings.json").await.is_err());
         assert_eq!(asset_mime("Figure.JPG"), Some("image/jpeg"));
+    }
+
+    #[tokio::test]
+    async fn keeps_versions_as_documents_are_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::new(dir.path().to_path_buf());
+        // A new, empty document has nothing worth keeping yet.
+        let mut blank = document("d0", 1);
+        blank["title"] = json!("");
+        blank["blocks"] = json!([{ "id": "b1", "source": "" }]);
+        store.save_document(&blank).await.unwrap();
+        assert!(store.versions("d0").await.unwrap().is_empty());
+
+        let mut doc = document("d1", 1);
+        store.save_document(&doc).await.unwrap();
+        // A save soon after keeps no new version; a labelled snapshot always does.
+        doc["title"] = json!("Second");
+        store.save_document(&doc).await.unwrap();
+        let versions = store.versions("d1").await.unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].title, "Doc d1");
+        assert_eq!((versions[0].blocks, versions[0].words), (1, 6));
+        let kept = store.snapshot("d1", "Before an Auto reply").await.unwrap();
+        assert_eq!(kept.label.as_deref(), Some("Before an Auto reply"));
+        assert_eq!(kept.title, "Second");
+        let versions = store.versions("d1").await.unwrap();
+        assert_eq!(versions[0].id, kept.id);
+        let old = store.load_version("d1", &versions[1].id).await.unwrap();
+        assert_eq!(old["title"], "Doc d1");
+        assert!(store.load_version("d1", "../x").await.is_err());
+        assert!(store.load_version("d1", "123").await.is_err());
+
+        // Old enough, and the next save keeps one.
+        let mut aged = store.versions("d1").await.unwrap();
+        for v in &mut aged {
+            v.at -= VERSION_EVERY_MS;
+        }
+        write_atomic(
+            &dir.path().join("history/d1/index.json"),
+            &serde_json::to_vec(&aged).unwrap(),
+        )
+        .await
+        .unwrap();
+        doc["title"] = json!("Third");
+        store.save_document(&doc).await.unwrap();
+        assert_eq!(store.versions("d1").await.unwrap()[0].title, "Third");
+
+        // Past the limit the oldest unlabelled versions go, with their files.
+        for n in 0..MAX_VERSIONS {
+            store
+                .keep_version("d1", &doc, None, 10_000 + n as i64)
+                .await
+                .unwrap();
+        }
+        let versions = store.versions("d1").await.unwrap();
+        assert_eq!(versions.len(), MAX_VERSIONS);
+        assert!(versions.iter().any(|v| v.label.is_some()));
+        let files = std::fs::read_dir(dir.path().join("history/d1"))
+            .unwrap()
+            .count();
+        assert_eq!(files, MAX_VERSIONS + 1);
+
+        store.delete_document("d1").await.unwrap();
+        assert!(!dir.path().join("history/d1").exists());
     }
 
     #[tokio::test]

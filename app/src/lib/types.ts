@@ -331,6 +331,17 @@ export interface Doc {
   bibliography?: string;
 }
 
+/** An earlier version of a document, kept on disk (see storage.rs). */
+export interface Version {
+  id: string;
+  at: number;
+  /** Why it was kept, when it wasn't simply time, e.g. "Before an Auto reply". */
+  label?: string | null;
+  title: string;
+  blocks: number;
+  words: number;
+}
+
 export interface Project {
   id: string;
   name: string;

@@ -72,7 +72,7 @@ interface Streaming {
  * document's threads, and turning replies into revisions or suggestions.
  */
 export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, canSee: (model: ModelRef) => boolean) {
-  const { updateDoc, mutateDocument, transactDocument, currentDocId } = workspace;
+  const { updateDoc, mutateDocument, transactDocument, currentDocId, flush: flushWorkspace } = workspace;
   const [streaming, setStreaming] = useState<Streaming | null>(null);
   const busy = useRef(false);
   const sees = useRef(canSee);
@@ -324,6 +324,13 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       const images = names.length ? await loadAttachmentImages(doc.id, names) : new Map<string, string>();
       if (work !== "manual") {
         stopping.current = null;
+        // A version to go back to, whatever the reply does. The first reply on a new document has none.
+        try {
+          await flushWorkspace();
+          await api.snapshotDocument(doc.id, work === "seminar" ? "Before a seminar" : "Before an Auto reply");
+        } catch {
+          // Undo still takes back what the reply changes.
+        }
         await (work === "seminar" ? runSeminar : runAgent)(doc, thread, model, effort, reply.id, images);
         busy.current = false;
         setStreaming(null);
@@ -381,7 +388,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       busy.current = false;
       setStreaming(null);
     },
-    [mutateDocument, currentDocId, systemPrompt, runAgent, runSeminar],
+    [mutateDocument, currentDocId, systemPrompt, runAgent, runSeminar, flushWorkspace],
   );
 
   /** Asks in `mode` about `context`, in the document's active thread (or a new one). */

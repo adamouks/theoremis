@@ -9,6 +9,7 @@ import { ImportDialog } from "./components/ImportDialog";
 import { Close } from "./components/Icons";
 import { MediaContext, NotationContext, type Notation } from "./components/Markdown";
 import { NotationDialog } from "./components/NotationDialog";
+import { HistoryDialog } from "./components/HistoryDialog";
 import { PrintDocument } from "./components/PrintDocument";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -331,6 +332,28 @@ export default function App() {
     };
   }, [read, references]);
 
+  // Earlier versions of the document, and bringing one back.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const restoreVersion = useCallback(
+    async (version: Doc, at: number) => {
+      if (!doc) return;
+      await workspace.flush();
+      const label = `Before restoring ${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+      await api.snapshotDocument(doc.id, label);
+      updateDoc((d) => ({
+        ...d,
+        title: version.title,
+        lede: version.lede,
+        blocks: version.blocks,
+        macros: version.macros,
+        bibliography: version.bibliography,
+      }));
+      setHistoryOpen(false);
+      setNotice({ text: "Restored. The document as it was is kept in its history." });
+    },
+    [doc, workspace, updateDoc],
+  );
+
   // Export and print. Where an export went is said for a few seconds, with a way to it.
   const [notice, setNotice] = useState<{ text: string; path?: string; error?: boolean } | null>(null);
   useEffect(() => {
@@ -435,6 +458,7 @@ export default function App() {
       ? [
           { id: "import-here", label: "Add a file to this document…", run: () => pickFiles("append") },
           { id: "notation", label: "Macros and references…", run: () => setNotationOpen("macros") },
+          { id: "history", label: "Version history…", run: () => setHistoryOpen(true) },
           { id: "export-latex", label: "Export as LaTeX…", hint: shortcut("⇧E"), run: () => void exportDoc() },
           { id: "print", label: "Print or save as PDF…", hint: shortcut("P"), run: () => void printDoc() },
         ]
@@ -559,6 +583,7 @@ export default function App() {
           onDelete={() => void workspace.deleteDocument(doc.id)}
           onExport={() => void exportDoc()}
           onEditNotation={() => setNotationOpen("macros")}
+          onShowHistory={() => setHistoryOpen(true)}
           references={references}
           onPrint={() => void printDoc()}
           onAsk={ask}
@@ -731,6 +756,7 @@ export default function App() {
         />
       )}
       {doc && printing === doc.id && <PrintDocument doc={doc} numbered={numbered} author={settings?.displayName ?? ""} references={references} />}
+      {doc && historyOpen && <HistoryDialog doc={doc} onRestore={restoreVersion} onClose={() => setHistoryOpen(false)} />}
       {doc && notationOpen && (
         <NotationDialog
           macros={doc.macros ?? ""}

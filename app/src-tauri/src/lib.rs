@@ -21,7 +21,7 @@ use lean::check::CheckResult;
 use lean::{Lean, LeanStatus, SetupEvent};
 use providers::{ChatMessage, Provider, ProviderStatus, StreamEvent, ToolSpec, ollama};
 use settings::{SettingsStore, SettingsUpdate, SettingsView};
-use storage::{DocumentSummary, Project, Workspace, WorkspaceStore};
+use storage::{DocumentSummary, Project, Version, Workspace, WorkspaceStore};
 
 struct AppState {
     settings: SettingsStore,
@@ -252,6 +252,33 @@ async fn delete_document(state: tauri::State<'_, AppState>, id: String) -> AppRe
     state.workspace.delete_document(&id).await
 }
 
+#[tauri::command]
+async fn list_versions(
+    state: tauri::State<'_, AppState>,
+    document: String,
+) -> AppResult<Vec<Version>> {
+    state.workspace.versions(&document).await
+}
+
+#[tauri::command]
+async fn load_version(
+    state: tauri::State<'_, AppState>,
+    document: String,
+    version: String,
+) -> AppResult<serde_json::Value> {
+    state.workspace.load_version(&document, &version).await
+}
+
+/// Keeps the document as saved now as a version, e.g. before an Auto reply changes it.
+#[tauri::command]
+async fn snapshot_document(
+    state: tauri::State<'_, AppState>,
+    document: String,
+    label: String,
+) -> AppResult<Version> {
+    state.workspace.snapshot(&document, &label).await
+}
+
 /// Saves a file of a document's media. The bytes travel as the raw request body, with the
 /// document id and file name in the `x-document` and `x-name` headers.
 #[tauri::command]
@@ -443,6 +470,9 @@ pub fn run() {
             load_document,
             save_document,
             delete_document,
+            list_versions,
+            load_version,
+            snapshot_document,
             save_asset,
             delete_asset,
             save_file,
