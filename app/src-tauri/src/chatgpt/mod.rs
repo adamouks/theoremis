@@ -325,6 +325,7 @@ impl ChatGpt {
     pub async fn stream_chat(
         &self,
         model: &str,
+        effort: Option<&str>,
         messages: &[ChatMessage],
         tools: &[ToolSpec],
         emit: impl FnMut(StreamEvent),
@@ -335,6 +336,7 @@ impl ChatGpt {
             &self.0.api_base,
             &token,
             model,
+            effort,
             messages,
             tools,
             emit,

@@ -226,7 +226,8 @@ about what the model is doing; none of it is decoration on its own.
 
 | Piece | Shows |
 | --- | --- |
-| `Orb` | The model is working. Its motion says what at: thinking, reading, Lean, writing, graphs (`toolActivity`) |
+| `Orb` | What the collaborator is doing (`Activity`). Idle: the sphere only turns. Thinking: dots wander across it. Acting (a tool running in Auto): its bands twist like a Rubik's cube. The header's orb follows the reply that is streaming |
+| `EffortGauge` | How hard the model thinks: a dial with a tick per effort the model offers, in the composer |
 | `Shimmer` | Status text while something runs: "Thinking…", "Checking with Lean…" |
 | `Reasoning` | What the model thought. It opens while the model thinks, folds a second after the answer starts, and then says how long it thought (`thoughtSeconds`) |
 | `AgentTimeline` | An Auto reply: its text, with each tool on a rail between. Lean's errors open under Details. It ends with what changed, Undo, and how long the run took (`finishedAt`) |
@@ -267,13 +268,25 @@ calls and results), emit `StreamEvent`s (text, reasoning, tool calls).
   that refuses encrypted reasoning is asked again without it, and its turns are written out
   from their text and calls.
 - **Ollama** (`providers/ollama.rs`). `GET /api/tags` lists models; `POST /api/chat` streams
-  NDJSON. Whether a model can see or call tools comes from `/api/show` capabilities. Tool
+  NDJSON. Whether a model can see, call tools or think comes from `/api/show` capabilities. Tool
   arguments go to Ollama as JSON objects and results as `tool` messages naming the tool;
   calls Ollama doesn't number are numbered on arrival. `num_ctx` is raised for large
   requests (transcriptions), since Ollama's default context silently truncates.
 
 Model lists are fetched by `list_models`, which reports each provider's availability and a
 message to show when it isn't (Ollama not running, not signed in).
+
+**Effort.** Each model lists the efforts it takes, least first (`ModelInfo.efforts`), and the
+composer offers them as a gauge. The choice is kept per model (`efforts` in settings, keyed
+`provider:model`) and sent with every request; `resolveEffort` in `lib/effort.ts` falls back to
+the model's default when a remembered choice is no longer offered.
+
+| Provider | Where the efforts come from | What is sent |
+| --- | --- | --- |
+| ChatGPT | The catalog's `supported_reasoning_levels` and `default_reasoning_level` (`none` … `xhigh`, shown as Instant … Max) | `reasoning: { effort, summary: "auto" }`, so the reply also streams summaries of its reasoning. A 400 naming `reasoning.summary` or `reasoning.effort` is retried without it (`Options::without_refused`) |
+| Ollama | `thinking` in the model's capabilities: gpt-oss takes `low`, `medium` or `high`; other thinking models take `none` (Instant) or `think` | `think: false`, `think: true`, or the level |
+
+Models that offer no choice show no gauge and get no effort.
 
 ## Lean 4
 
@@ -476,7 +489,8 @@ as production.
 | To… | Look at |
 | --- | --- |
 | Change what the collaborator is told | `lib/prompts.ts` |
-| Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), its working label in `components/ai/AgentTimeline.tsx` and its orb in `toolActivity` (`components/ai/effects.tsx`) |
+| Give the collaborator a new tool in Auto mode | `AGENT_TOOLS` and `runTool` in `lib/agent.ts` (a document-to-document function, with a test), and its working label in `components/ai/AgentTimeline.tsx` |
+| Name or describe a new effort | `LABELS` and `NOTES` in `lib/effort.ts`, and its place in `sort_efforts` (`providers/mod.rs`) |
 | Change the collaborator's effects or their colours | The wrappers in `components/ai/effects.tsx`. Leave `src/vendor/` as upstream wrote it, and list any change in `src/vendor/README.md` |
 | Add a collaborator mode | `Mode` in `lib/types.ts`, `MODE_INSTRUCTIONS` in `lib/prompts.ts`, the composer in `Collaborator.tsx` |
 | Add a model provider | `providers/` (stream `StreamEvent`s from `ChatMessage`s), `Provider` in both `providers/mod.rs` and `lib/types.ts`, `list_models` and `run_chat` in `lib.rs` |

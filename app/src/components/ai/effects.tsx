@@ -20,29 +20,35 @@ const VIOLET = "#b093e5";
 const CYAN = "#71c5df";
 
 /** What the collaborator is doing, which decides how its orb moves. */
-export type Activity = "thinking" | "reading" | "lean" | "writing" | "graph" | "working";
+export type Activity = "idle" | "thinking" | "acting";
 
+/**
+ * Idle: the sphere turns slowly and nothing moves on it. Thinking: dots wander across it.
+ * Acting (a tool running in Auto mode): its bands twist like a Rubik's cube.
+ */
 const ORB_STATES: Record<Activity, OrbState> = {
-  thinking: "solving",
-  reading: "searching",
-  lean: "connecting",
-  writing: "composing",
-  graph: "shaping",
-  working: "listening",
+  idle: "solving",
+  thinking: "working",
+  acting: "solving",
 };
 
-/** The activity a tool call stands for. */
-export function toolActivity(name: string): Activity {
-  if (name === "read_document" || name === "list_documents") return "reading";
-  if (name === "check_lean") return "lean";
-  if (name === "check_graph") return "graph";
-  if (name === "edit_block" || name === "insert_block" || name === "delete_block" || name === "set_title" || name === "set_status") return "writing";
-  return "working";
-}
+/** The Rubik's sphere with no moves to make only rotates. */
+const STILL = { moveCount: 0 };
 
-/** The collaborator's presence while it works: a small animated orb in the accent colour. */
-export function Orb({ activity = "working", size = 20 }: { activity?: Activity; size?: 20 | 32 | 64 }) {
-  return <ThinkingOrb state={ORB_STATES[activity]} size={size} theme="dark" color={ACCENT_LIGHT} aria-hidden="true" className="orb" />;
+/** The collaborator's presence: a small animated orb in the accent colour. */
+export function Orb({ activity = "idle", size = 20 }: { activity?: Activity; size?: 20 | 32 | 64 }) {
+  return (
+    <ThinkingOrb
+      state={ORB_STATES[activity]}
+      opts={activity === "idle" ? STILL : undefined}
+      speed={activity === "idle" ? 0.6 : 1}
+      size={size}
+      theme="dark"
+      color={ACCENT_LIGHT}
+      aria-hidden="true"
+      className={`orb orb--${activity}`}
+    />
+  );
 }
 
 /** Status text with a light passing through it: "Thinking…", "Checking with Lean…". */

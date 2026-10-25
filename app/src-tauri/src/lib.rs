@@ -94,6 +94,8 @@ async fn chatgpt_sign_out(state: tauri::State<'_, AppState>) -> AppResult<Sessio
     state.chatgpt.sign_out().await
 }
 
+// A Tauri command takes each argument by name from the frontend's payload.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn chat_stream(
     state: tauri::State<'_, AppState>,
@@ -102,22 +104,31 @@ async fn chat_stream(
     model: String,
     messages: Vec<ChatMessage>,
     tools: Option<Vec<ToolSpec>>,
+    effort: Option<String>,
     on_event: Channel<StreamEvent>,
 ) -> AppResult<ChatOutcome> {
     let tools = tools.unwrap_or_default();
-    let result = run_chat(
-        &state, request_id, provider, model, messages, &tools, &on_event,
-    )
-    .await;
+    let target = Target {
+        provider,
+        model,
+        effort,
+    };
+    let result = run_chat(&state, request_id, target, messages, &tools, &on_event).await;
     let _ = on_event.send(StreamEvent::Done);
     result
+}
+
+/// The model a reply comes from, and how hard it is asked to think.
+struct Target {
+    provider: Provider,
+    model: String,
+    effort: Option<String>,
 }
 
 async fn run_chat(
     state: &AppState,
     request_id: String,
-    provider: Provider,
-    model: String,
+    target: Target,
     messages: Vec<ChatMessage>,
     tools: &[ToolSpec],
     on_event: &Channel<StreamEvent>,
@@ -136,16 +147,22 @@ async fn run_chat(
         // The window may have gone away mid-stream; there's no one left to tell.
         let _ = on_event.send(event);
     };
+    let Target {
+        provider,
+        model,
+        effort,
+    } = target;
+    let effort = effort.as_deref();
     let run = async {
         match provider {
             Provider::Ollama => {
                 let url = state.settings.ollama_base_url();
-                ollama::stream_chat(&state.http, &url, &model, &messages, tools, emit).await
+                ollama::stream_chat(&state.http, &url, &model, effort, &messages, tools, emit).await
             }
             Provider::Chatgpt => {
                 state
                     .chatgpt
-                    .stream_chat(&model, &messages, tools, emit)
+                    .stream_chat(&model, effort, &messages, tools, emit)
                     .await
             }
         }

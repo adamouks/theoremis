@@ -43,7 +43,7 @@ This separates **exploration**, which AI can help accelerate, from **verificatio
 | Area | Implementation |
 | --- | --- |
 | Desktop and UI | [Tauri](https://tauri.app), Rust, React, TypeScript |
-| AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models; Manual proposals or an Auto agent with document, Lean and graph tools |
+| AI collaboration | Sign in with ChatGPT (OAuth + PKCE), or connect to local [Ollama](https://ollama.com) models; a reasoning effort per model, from Instant to Max as each model allows; Manual proposals or an Auto agent with document, Lean and graph tools |
 | Formal checking | Lean 4, Mathlib, `lake env lean`, theorem/axiom inspection |
 | Imports and graphs | pdf.js (text layer, rendering, figure detection), vision models, three.js, an expression language compiled without `eval` |
 | Documents | Local JSON files, autosave, per-document conversation threads |

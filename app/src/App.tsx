@@ -13,6 +13,7 @@ import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { api, errorMessage } from "./lib/api";
 import { blockContext, numberBlocks } from "./lib/doc";
+import { effortKey, resolveEffort } from "./lib/effort";
 import { MODE_LABELS } from "./lib/prompts";
 import { ACCEPTED_FILES } from "./lib/sources";
 import { timeAgo } from "./lib/text";
@@ -129,6 +130,18 @@ export default function App() {
   const autoMode = !!settings?.autoMode;
   const canAct = callsTools(infoOf(selected));
   const auto = autoMode && canAct;
+  // How hard the model thinks: chosen per model, and remembered.
+  const efforts = infoOf(selected)?.efforts ?? [];
+  const effort = selected ? resolveEffort(infoOf(selected), settings?.efforts?.[effortKey(selected)]) : undefined;
+  const setEffort = useCallback(
+    (id: string) => {
+      if (!selected || !settings) return;
+      const next = { ...settings.efforts, [effortKey(selected)]: id };
+      setSettings((s) => (s ? { ...s, efforts: next } : s));
+      api.updateSettings({ efforts: next }).then(setSettings, (err) => console.error(err));
+    },
+    [selected, settings],
+  );
   const setAutoMode = useCallback((on: boolean) => {
     setSettings((s) => (s ? { ...s, autoMode: on } : s));
     api.updateSettings({ autoMode: on }).then(setSettings, (err) => console.error(err));
@@ -259,9 +272,9 @@ export default function App() {
       setPanelCollapsed(false);
       setFocus(false);
       if (mode === "ask" || !selected || !hasModel) setComposerFocus((k) => k + 1);
-      else collab.send(doc.id, selected, mode, "", ctx, false, [], auto);
+      else collab.send(doc.id, selected, mode, "", ctx, false, [], auto, effort);
     },
-    [doc, numbered, selected, hasModel, collab, auto],
+    [doc, numbered, selected, hasModel, collab, auto, effort],
   );
 
   const acceptSuggestion = useCallback(
@@ -522,11 +535,14 @@ export default function App() {
             dropped={composerDrop}
             autoMode={autoMode}
             canAct={canAct}
+            efforts={efforts}
+            effort={effort}
+            onSetEffort={setEffort}
             onSetAutoMode={setAutoMode}
             onUndoAgent={collab.undoAgent}
-            onSend={(mode, text, attachments) => selected && collab.send(doc.id, selected, mode, text, context, false, attachments, auto)}
+            onSend={(mode, text, attachments) => selected && collab.send(doc.id, selected, mode, text, context, false, attachments, auto, effort)}
             onStop={collab.stop}
-            onRetry={(threadId) => selected && collab.retry(threadId, selected, auto)}
+            onRetry={(threadId) => selected && collab.retry(threadId, selected, auto, effort)}
             onNewThread={() => {
               updateDoc((d: Doc) => ({ ...d, activeThreadId: undefined }), "meta");
               setComposerFocus((k) => k + 1);
@@ -554,7 +570,7 @@ export default function App() {
                 blocks: d.blocks.map((b) => (b.id === blockId ? { ...b, status: "verified", note: "checked in Lean" } : b)),
               }))
             }
-            onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null, false, [], auto)}
+            onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null, false, [], auto, effort)}
           />
         ))}
 

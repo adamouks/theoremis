@@ -8,7 +8,9 @@ use serde_json::{Value, json};
 use super::service_error;
 use crate::error::{AppError, AppResult};
 use crate::providers::lines::{Flow, for_each_line};
-use crate::providers::{ChatMessage, ModelInfo, Provider, Role, StreamEvent, ToolSpec};
+use crate::providers::{
+    ChatMessage, Effort, ModelInfo, Provider, Role, StreamEvent, ToolSpec, sort_efforts,
+};
 
 const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 /// A deadline for the whole reply, body included.
@@ -25,6 +27,41 @@ struct CatalogModel {
     display_name: String,
     #[serde(default)]
     visibility: Option<String>,
+    /// The reasoning efforts the model takes, e.g. `low` to `xhigh`.
+    #[serde(default)]
+    supported_reasoning_levels: Vec<CatalogLevel>,
+    #[serde(default)]
+    default_reasoning_level: Option<String>,
+}
+
+/// An effort as the catalog lists it: with a description, or as a bare name.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CatalogLevel {
+    Described {
+        effort: String,
+        #[serde(default)]
+        description: Option<String>,
+    },
+    Named(String),
+}
+
+impl From<CatalogLevel> for Effort {
+    fn from(level: CatalogLevel) -> Self {
+        match level {
+            CatalogLevel::Described {
+                effort,
+                description,
+            } => Effort {
+                id: effort,
+                description: description.filter(|d| !d.trim().is_empty()),
+            },
+            CatalogLevel::Named(effort) => Effort {
+                id: effort,
+                description: None,
+            },
+        }
+    }
 }
 
 pub async fn list_models(
@@ -52,14 +89,27 @@ pub async fn list_models(
         .models
         .into_iter()
         .filter(|m| m.visibility.as_deref() == Some("list") && !m.slug.trim().is_empty())
-        .map(|m| ModelInfo {
-            provider: Provider::Chatgpt,
-            id: m.slug,
-            name: Some(m.display_name).filter(|n| !n.trim().is_empty()),
-            detail: None,
-            // Every model offered to ChatGPT plans reads images and calls tools.
-            vision: Some(true),
-            tools: Some(true),
+        .map(|m| {
+            let efforts = sort_efforts(
+                m.supported_reasoning_levels
+                    .into_iter()
+                    .map(Effort::from)
+                    .collect(),
+            );
+            let default_effort = m
+                .default_reasoning_level
+                .filter(|d| efforts.iter().any(|e| &e.id == d));
+            ModelInfo {
+                provider: Provider::Chatgpt,
+                id: m.slug,
+                name: Some(m.display_name).filter(|n| !n.trim().is_empty()),
+                detail: None,
+                // Every model offered to ChatGPT plans reads images and calls tools.
+                vision: Some(true),
+                tools: Some(true),
+                efforts,
+                default_effort,
+            }
         })
         .collect())
 }
@@ -67,45 +117,46 @@ pub async fn list_models(
 /// Streams a reply from the Responses API. System messages become `instructions`, and
 /// nothing is stored on OpenAI's side (`store: false`).
 ///
+/// With an `effort`, the model is asked to think that hard and to summarize its reasoning,
+/// which the frontend shows as the model's thinking.
+///
 /// With tools, the reply's output items (reasoning, text and calls) are also sent to the
 /// frontend as [`StreamEvent::Opaque`], to be passed back verbatim with the tool results.
 /// Reasoning comes encrypted for that, so the model keeps its train of thought between calls
-/// although nothing is stored; a model that won't encrypt its reasoning is asked again without.
+/// although nothing is stored.
+///
+/// A model that refuses one of these (encrypted reasoning, summaries, the effort) is asked
+/// again without it.
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_chat(
     http: &reqwest::Client,
     base_url: &str,
     access_token: &str,
     model: &str,
+    effort: Option<&str>,
     messages: &[ChatMessage],
     tools: &[ToolSpec],
     mut emit: impl FnMut(StreamEvent),
 ) -> AppResult<()> {
-    let mut keep_items = !tools.is_empty();
-    let mut sent = post(
-        http,
-        base_url,
-        access_token,
-        &request_body(model, messages, tools, keep_items),
-    )
-    .await?;
-    if keep_items && matches!(&sent, Sent::Rejected(400, body) if refuses_encrypted_reasoning(body))
-    {
-        keep_items = false;
-        sent = post(
-            http,
-            base_url,
-            access_token,
-            &request_body(model, messages, tools, false),
-        )
-        .await?;
-    }
-    let response = match sent {
-        Sent::Accepted(response) => response,
-        Sent::Rejected(status, body) => {
-            let data = serde_json::from_str(&body).unwrap_or(Value::Null);
-            return Err(service_error(&data, Some(status)));
+    let mut options = Options {
+        keep_items: !tools.is_empty(),
+        effort,
+        summary: effort.is_some(),
+    };
+    let response = loop {
+        let body = request_body(model, messages, tools, options);
+        match post(http, base_url, access_token, &body).await? {
+            Sent::Accepted(response) => break response,
+            Sent::Rejected(status, body) => match options.without_refused(&body) {
+                Some(fewer) if status == 400 => options = fewer,
+                _ => {
+                    let data = serde_json::from_str(&body).unwrap_or(Value::Null);
+                    return Err(service_error(&data, Some(status)));
+                }
+            },
         }
     };
+    let keep_items = options.keep_items;
     let content_type = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -169,10 +220,57 @@ pub async fn stream_chat(
     Ok(())
 }
 
+/// What a request asks of the model besides the conversation. Each can be dropped if refused.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Options<'a> {
+    /// Send turns back as the items they came from, encrypted reasoning included.
+    keep_items: bool,
+    /// How hard to think (`low`, `high`…), for a model that offers a choice.
+    effort: Option<&'a str>,
+    /// Ask for summaries of the reasoning.
+    summary: bool,
+}
+
+impl Options<'_> {
+    /// The options without the one a 400 objects to, or `None` if it objects to none of them.
+    fn without_refused(self, body: &str) -> Option<Self> {
+        if self.keep_items && refuses_encrypted_reasoning(body) {
+            return Some(Self {
+                keep_items: false,
+                ..self
+            });
+        }
+        let param = refused_param(body);
+        let names = |name: &str| param.as_deref() == Some(name) || body.contains(name);
+        if self.summary && names("reasoning.summary") {
+            return Some(Self {
+                summary: false,
+                ..self
+            });
+        }
+        if self.effort.is_some()
+            && (names("reasoning.effort") || param.as_deref() == Some("reasoning"))
+        {
+            return Some(Self {
+                effort: None,
+                summary: false,
+                ..self
+            });
+        }
+        None
+    }
+}
+
 /// Whether a 400 is about the `include` of encrypted reasoning, which some models don't support.
 fn refuses_encrypted_reasoning(body: &str) -> bool {
     let body = body.to_ascii_lowercase();
     body.contains("encrypted") || body.contains("\"param\":\"include\"")
+}
+
+/// The request parameter an error names, as in `{"error":{"param":"reasoning.effort"}}`.
+fn refused_param(body: &str) -> Option<String> {
+    let data: Value = serde_json::from_str(body).ok()?;
+    data.pointer("/error/param")?.as_str().map(str::to_string)
 }
 
 enum Sent {
@@ -212,8 +310,9 @@ fn request_body(
     model: &str,
     messages: &[ChatMessage],
     tools: &[ToolSpec],
-    keep_items: bool,
+    options: Options,
 ) -> Value {
+    let keep_items = options.keep_items;
     let instructions: Vec<&str> = messages
         .iter()
         .filter(|m| m.role == Role::System)
@@ -274,6 +373,13 @@ fn request_body(
         if keep_items {
             body["include"] = json!(["reasoning.encrypted_content"]);
         }
+    }
+    if let Some(effort) = options.effort {
+        body["reasoning"] = if options.summary {
+            json!({ "effort": effort, "summary": "auto" })
+        } else {
+            json!({ "effort": effort })
+        };
     }
     body
 }
@@ -384,9 +490,16 @@ mod tests {
         )
         .await;
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "tok", "gpt-test", &messages(), &[], |e| {
-            events.push(e)
-        })
+        stream_chat(
+            &client(),
+            &url,
+            "tok",
+            "gpt-test",
+            None,
+            &messages(),
+            &[],
+            |e| events.push(e),
+        )
         .await
         .unwrap();
         assert_eq!(
@@ -450,9 +563,16 @@ mod tests {
         )
         .await;
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "tok", "m", &messages(), &tools(), |e| {
-            events.push(e)
-        })
+        stream_chat(
+            &client(),
+            &url,
+            "tok",
+            "m",
+            None,
+            &messages(),
+            &tools(),
+            |e| events.push(e),
+        )
         .await
         .unwrap();
         assert_eq!(events.len(), 4);
@@ -510,7 +630,16 @@ mod tests {
             },
         ];
         // The items as ChatGPT produced them, encrypted reasoning included.
-        let kept = request_body("m", &history, &tools(), true);
+        let kept = request_body(
+            "m",
+            &history,
+            &tools(),
+            Options {
+                keep_items: true,
+                effort: None,
+                summary: false,
+            },
+        );
         let input = kept["input"].as_array().unwrap();
         assert_eq!(input.len(), 4);
         assert_eq!(input[1]["encrypted_content"], "gAAA");
@@ -520,7 +649,16 @@ mod tests {
             json!({ "type": "function_call_output", "call_id": "call_1", "output": "accepted" })
         );
         // Without them, the turn is written out from its text and calls.
-        let fresh = request_body("m", &history, &tools(), false);
+        let fresh = request_body(
+            "m",
+            &history,
+            &tools(),
+            Options {
+                keep_items: false,
+                effort: None,
+                summary: false,
+            },
+        );
         let input = fresh["input"].as_array().unwrap();
         assert_eq!(input.len(), 4);
         assert_eq!(
@@ -555,9 +693,16 @@ mod tests {
         ])
         .await;
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "tok", "m", &messages(), &tools(), |e| {
-            events.push(e)
-        })
+        stream_chat(
+            &client(),
+            &url,
+            "tok",
+            "m",
+            None,
+            &messages(),
+            &tools(),
+            |e| events.push(e),
+        )
         .await
         .unwrap();
         // Only the call: without encrypted reasoning there is nothing to send back verbatim.
@@ -580,7 +725,7 @@ mod tests {
         )
         .await;
         let mut events = Vec::new();
-        let err = stream_chat(&client(), &url, "tok", "m", &messages(), &[], |e| {
+        let err = stream_chat(&client(), &url, "tok", "m", None, &messages(), &[], |e| {
             events.push(e)
         })
         .await
@@ -597,7 +742,7 @@ mod tests {
             vec![r#"{"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"limit"}}"#],
         )
         .await;
-        let err = stream_chat(&client(), &url, "tok", "m", &messages(), &[], |_| {})
+        let err = stream_chat(&client(), &url, "tok", "m", None, &messages(), &[], |_| {})
             .await
             .unwrap_err();
         assert!(err.to_string().contains("usage limit"), "{err}");
@@ -636,6 +781,143 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "gpt-6");
         assert_eq!(models[0].name.as_deref(), Some("GPT-6"));
+        assert!(models[0].efforts.is_empty());
         assert!(server.await.unwrap().head.starts_with("GET /models "));
+    }
+
+    #[tokio::test]
+    async fn lists_each_models_efforts_least_first() {
+        let (url, _server) = serve_once(
+            200,
+            "application/json",
+            vec![
+                r#"{"models":[{"slug":"gpt-6","display_name":"GPT-6","visibility":"list","default_reasoning_level":"medium","supported_reasoning_levels":[{"effort":"high","description":"Thinks hard"},{"effort":"low","description":""},"xhigh",{"effort":"medium"}]},{"slug":"gpt-6-mini","display_name":"Mini","visibility":"list","default_reasoning_level":"max"}]}"#,
+            ],
+        )
+        .await;
+        let models = list_models(&client(), &url, "tok").await.unwrap();
+        let ids: Vec<&str> = models[0].efforts.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["low", "medium", "high", "xhigh"]);
+        assert_eq!(
+            models[0].efforts[2].description.as_deref(),
+            Some("Thinks hard")
+        );
+        assert_eq!(models[0].efforts[0].description, None);
+        assert_eq!(models[0].default_effort.as_deref(), Some("medium"));
+        // A default the model doesn't list is no default.
+        assert!(models[1].efforts.is_empty());
+        assert_eq!(models[1].default_effort, None);
+    }
+
+    #[test]
+    fn asks_for_the_effort_and_reasoning_summaries() {
+        let options = |effort, summary| Options {
+            keep_items: false,
+            effort,
+            summary,
+        };
+        let body = request_body("m", &messages(), &[], options(Some("high"), true));
+        assert_eq!(
+            body["reasoning"],
+            json!({ "effort": "high", "summary": "auto" })
+        );
+        let body = request_body("m", &messages(), &[], options(Some("low"), false));
+        assert_eq!(body["reasoning"], json!({ "effort": "low" }));
+        assert!(
+            request_body("m", &messages(), &[], options(None, false))
+                .get("reasoning")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn drops_only_what_a_refusal_names() {
+        let all = Options {
+            keep_items: true,
+            effort: Some("xhigh"),
+            summary: true,
+        };
+        let refusal =
+            |param: &str| format!(r#"{{"error":{{"message":"Unsupported.","param":"{param}"}}}}"#);
+        assert_eq!(
+            all.without_refused(&refusal("include")),
+            Some(Options {
+                keep_items: false,
+                ..all
+            })
+        );
+        assert_eq!(
+            all.without_refused(&refusal("reasoning.summary")),
+            Some(Options {
+                summary: false,
+                ..all
+            })
+        );
+        assert_eq!(
+            all.without_refused(&refusal("reasoning.effort")),
+            Some(Options {
+                effort: None,
+                summary: false,
+                ..all
+            })
+        );
+        assert_eq!(all.without_refused(&refusal("tools")), None);
+        assert_eq!(all.without_refused("not json"), None);
+    }
+
+    #[tokio::test]
+    async fn asks_again_without_an_effort_the_model_refuses() {
+        let (url, server) = serve_each(vec![
+            (
+                400,
+                "application/json",
+                vec![r#"{"error":{"message":"Reasoning summaries are not supported.","param":"reasoning.summary"}}"#],
+            ),
+            (
+                400,
+                "application/json",
+                vec![r#"{"error":{"message":"Unsupported value: 'xhigh'.","param":"reasoning.effort"}}"#],
+            ),
+            (
+                200,
+                "text/event-stream",
+                vec![
+                    "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Done.\"}\n\n",
+                    "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
+                ],
+            ),
+        ])
+        .await;
+        let mut events = Vec::new();
+        stream_chat(
+            &client(),
+            &url,
+            "tok",
+            "m",
+            Some("xhigh"),
+            &messages(),
+            &[],
+            |e| events.push(e),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![StreamEvent::Delta {
+                text: "Done.".into()
+            }]
+        );
+        let bodies: Vec<Value> = server
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| serde_json::from_str(&r.body).unwrap())
+            .collect();
+        assert_eq!(
+            bodies[0]["reasoning"],
+            json!({ "effort": "xhigh", "summary": "auto" })
+        );
+        assert_eq!(bodies[1]["reasoning"], json!({ "effort": "xhigh" }));
+        assert!(bodies[2].get("reasoning").is_none());
     }
 }

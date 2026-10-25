@@ -105,6 +105,31 @@ pub enum StreamEvent {
     Done,
 }
 
+/// How hard a model can be asked to think: an OpenAI reasoning effort (`none`, `minimal`, `low`,
+/// `medium`, `high`, `xhigh`), or for an Ollama model that only switches thinking on or off,
+/// `none` and `think`.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Effort {
+    pub id: String,
+    /// The provider's own description, when it gives one.
+    pub description: Option<String>,
+}
+
+/// Orders efforts from least to most thinking. Unknown ones go last, in their given order.
+pub fn sort_efforts(mut efforts: Vec<Effort>) -> Vec<Effort> {
+    const LADDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "think", "xhigh"];
+    let mut seen = std::collections::HashSet::new();
+    efforts.retain(|e| seen.insert(e.id.clone()));
+    efforts.sort_by_key(|e| {
+        LADDER
+            .iter()
+            .position(|l| *l == e.id)
+            .unwrap_or(LADDER.len())
+    });
+    efforts
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
@@ -118,6 +143,10 @@ pub struct ModelInfo {
     pub vision: Option<bool>,
     /// Whether the model can call tools (Auto mode), when the provider says.
     pub tools: Option<bool>,
+    /// The efforts the model takes, least first. Empty when there's no choice to make.
+    pub efforts: Vec<Effort>,
+    /// The effort the provider uses when none is asked for.
+    pub default_effort: Option<String>,
 }
 
 /// Models offered by one provider, or why none are available.

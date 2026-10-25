@@ -3,10 +3,11 @@
 // Thought (Apache-2.0, see THIRD_PARTY_NOTICES.md).
 
 import { useEffect, useRef, useState } from "react";
+import { effortLabel } from "../../lib/effort";
 import type { AgentRun, AgentStep, Doc } from "../../lib/types";
 import { Check, ChevronDown, Retry } from "../Icons";
 import { Markdown, type CodeFooter } from "../Markdown";
-import { Orb, Shimmer, Sparks, toolActivity, type ClickSparkHandle } from "./effects";
+import { Orb, Shimmer, Sparks, type ClickSparkHandle } from "./effects";
 
 const WORKING: Record<string, string> = {
   read_document: "Reading",
@@ -35,6 +36,7 @@ export function AgentTimeline({
   doc,
   model,
   startedAt,
+  effort,
   streaming,
   leanFooter,
   onShowBlock,
@@ -45,6 +47,8 @@ export function AgentTimeline({
   model?: string;
   /** When the reply started, to say how long it worked. */
   startedAt: number;
+  /** The effort the reply was asked for. */
+  effort?: string;
   streaming: boolean;
   leanFooter?: CodeFooter;
   onShowBlock: (blockId: string) => void;
@@ -121,6 +125,7 @@ export function AgentTimeline({
             <span className="agent-summary__meta">
               Worked for {elapsed(run.finishedAt - startedAt)}
               {tools > 0 && ` · ${tools} ${tools === 1 ? "step" : "steps"}`}
+              {effort && ` · ${effortLabel(effort)}`}
             </span>
           )}
         </div>
@@ -148,7 +153,7 @@ function StepRow({ step, doc, onShowBlock }: { step: ToolStep; doc: Doc; onShowB
       <div className="agent-step__node">
         <Sparks ref={sparks} className="agent-step__spark" disabled={!step.verified}>
           {step.pending ? (
-            <Orb activity={toolActivity(step.name)} />
+            <Orb activity="acting" />
           ) : (
             <span className="agent-step__mark" aria-hidden="true">
               {step.ok ? <Check /> : "!"}

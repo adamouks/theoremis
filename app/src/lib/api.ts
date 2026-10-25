@@ -24,6 +24,8 @@ export interface StreamRequest {
   messages: ChatMessage[];
   /** Tools the model may call (Auto mode). Calls arrive as `toolCall` events. */
   tools?: ToolSpec[];
+  /** How hard to think, one of the model's `efforts`. */
+  effort?: string;
   onEvent: (event: StreamEvent) => void;
 }
 
@@ -46,7 +48,7 @@ export const api = {
    * Resolves once the reply is complete or cancelled and every streamed event has been
    * delivered; rejects with a readable message on failure.
    */
-  async streamChat({ requestId, provider, model, messages, tools, onEvent }: StreamRequest) {
+  async streamChat({ requestId, provider, model, messages, tools, effort, onEvent }: StreamRequest) {
     let markDone = () => {};
     const done = new Promise<void>((resolve) => (markDone = resolve));
     const channel = new Channel<StreamEvent | { type: "done" }>();
@@ -58,6 +60,7 @@ export const api = {
       model,
       messages,
       tools: tools?.length ? tools : null,
+      effort: effort ?? null,
       onEvent: channel,
     }).then(
       (value) => ({ ok: true as const, value }),

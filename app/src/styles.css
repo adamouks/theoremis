@@ -2092,8 +2092,12 @@ a:hover {
 }
 
 .msg__time {
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   color: oklch(0.66 0.008 276);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .msg__spacer {
@@ -4890,4 +4894,115 @@ a:hover {
 
 .mode-switch .auto-label {
   font-weight: 500;
+}
+
+/* How hard the model thinks: a gauge beside Manual and Auto (components/ai/EffortGauge.tsx). */
+
+.effort {
+  margin-left: auto;
+}
+
+.effort + .mode-switch {
+  margin-left: 0;
+}
+
+.effort__button {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  font-size: 11px;
+  color: var(--text-3);
+  transition:
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.effort__button:hover,
+.effort__button.is-open {
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px oklch(0.7 0.1 276 / 0.45);
+}
+
+.gauge {
+  flex: none;
+  overflow: visible;
+}
+
+.gauge__track,
+.gauge__fill {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gauge__track {
+  stroke: oklch(0.38 0.012 276);
+}
+
+.gauge__fill {
+  stroke: var(--accent-text);
+  stroke-dasharray: 100;
+  transition: stroke-dashoffset 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.gauge__tick {
+  fill: oklch(0.42 0.01 276);
+  transition: fill 0.2s ease;
+}
+
+.gauge__tick.is-on {
+  fill: var(--accent-text-hover);
+}
+
+.gauge__needle {
+  transform-box: view-box;
+  transform-origin: 10px 10px;
+  /* A little overshoot, as a needle settles. */
+  transition: transform 0.45s cubic-bezier(0.3, 1.45, 0.5, 1);
+}
+
+.gauge__needle line {
+  stroke: var(--text-strong);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.gauge__hub {
+  fill: var(--text-strong);
+}
+
+.effort-menu {
+  width: 270px;
+}
+
+.effort-menu__item {
+  align-items: flex-start;
+  padding: 6px 8px;
+}
+
+.effort-menu__item .gauge {
+  margin-top: 2px;
+}
+
+.effort-menu__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.effort-menu__name {
+  font-size: 12.5px;
+}
+
+.effort-menu__note {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-4);
 }

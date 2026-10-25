@@ -7,8 +7,8 @@ use serde_json::json;
 
 use super::lines::{Flow, for_each_line};
 use super::{
-    ChatMessage, ModelInfo, Provider, ProviderStatus, Role, StreamEvent, ToolSpec, data_url_base64,
-    error_from_body,
+    ChatMessage, Effort, ModelInfo, Provider, ProviderStatus, Role, StreamEvent, ToolSpec,
+    data_url_base64, error_from_body,
 };
 use crate::error::{AppError, AppResult};
 
@@ -84,6 +84,9 @@ async fn fetch_models(client: &reqwest::Client, base_url: &str) -> AppResult<Vec
         if let Some(capabilities) = capabilities {
             model.vision = Some(capabilities.iter().any(|c| c == "vision"));
             model.tools = Some(capabilities.iter().any(|c| c == "tools"));
+            if capabilities.iter().any(|c| c == "thinking") {
+                (model.efforts, model.default_effort) = thinking_efforts(&model.id);
+            }
         }
     }
     Ok(models)
@@ -115,6 +118,25 @@ async fn fetch_capabilities(
     show.capabilities
 }
 
+/// What a thinking model can be asked. gpt-oss always thinks, at low, medium or high effort;
+/// other thinking models (qwen3, deepseek-r1…) either think first or answer at once.
+fn thinking_efforts(model: &str) -> (Vec<Effort>, Option<String>) {
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let (ids, default): (&[&str], &str) = if name.starts_with("gpt-oss") {
+        (&["low", "medium", "high"], "medium")
+    } else {
+        (&["none", "think"], "think")
+    };
+    let efforts = ids
+        .iter()
+        .map(|id| Effort {
+            id: (*id).into(),
+            description: None,
+        })
+        .collect();
+    (efforts, Some(default.into()))
+}
+
 fn models_from_tags(tags: TagsResponse) -> Vec<ModelInfo> {
     let mut models: Vec<ModelInfo> = tags
         .models
@@ -137,6 +159,8 @@ fn models_from_tags(tags: TagsResponse) -> Vec<ModelInfo> {
                 detail,
                 vision: None,
                 tools: None,
+                efforts: Vec::new(),
+                default_effort: None,
             }
         })
         .collect();
@@ -148,13 +172,14 @@ pub async fn stream_chat(
     client: &reqwest::Client,
     base_url: &str,
     model: &str,
+    effort: Option<&str>,
     messages: &[ChatMessage],
     tools: &[ToolSpec],
     mut emit: impl FnMut(StreamEvent),
 ) -> AppResult<()> {
     let response = client
         .post(format!("{base_url}/api/chat"))
-        .json(&request_body(model, messages, tools))
+        .json(&request_body(model, effort, messages, tools))
         .send()
         .await
         .map_err(|err| request_error(err, base_url))?;
@@ -213,7 +238,12 @@ fn context_window(messages: &[ChatMessage]) -> Option<u32> {
 
 /// Ollama takes images as bare base64 next to the text, tool arguments as JSON objects, and
 /// tool results as `tool` messages naming the tool.
-fn request_body(model: &str, messages: &[ChatMessage], tools: &[ToolSpec]) -> serde_json::Value {
+fn request_body(
+    model: &str,
+    effort: Option<&str>,
+    messages: &[ChatMessage],
+    tools: &[ToolSpec],
+) -> serde_json::Value {
     let wire: Vec<serde_json::Value> = messages
         .iter()
         .map(|m| {
@@ -260,6 +290,13 @@ fn request_body(model: &str, messages: &[ChatMessage], tools: &[ToolSpec]) -> se
     }
     if let Some(num_ctx) = context_window(messages) {
         body["options"] = json!({ "num_ctx": num_ctx });
+    }
+    // `think` switches thinking on or off, or for gpt-oss sets how hard it thinks.
+    match effort {
+        Some("none") => body["think"] = json!(false),
+        Some("think") => body["think"] = json!(true),
+        Some(level) => body["think"] = json!(level),
+        None => {}
     }
     body
 }
@@ -369,7 +406,7 @@ mod tests {
             ..Default::default()
         }];
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "qwen3:8b", &messages, &[], |e| {
+        stream_chat(&client(), &url, "qwen3:8b", None, &messages, &[], |e| {
             events.push(e)
         })
         .await
@@ -403,7 +440,7 @@ mod tests {
             vec!["{\"message\":{\"content\":\"partial\"},\"done\":false}\n"],
         )
         .await;
-        let err = stream_chat(&client(), &url, "m", &[], &[], |_| {})
+        let err = stream_chat(&client(), &url, "m", None, &[], &[], |_| {})
             .await
             .unwrap_err();
         assert!(err.to_string().contains("before finishing"));
@@ -414,7 +451,7 @@ mod tests {
             vec![r#"{"error":"model \"nope\" not found, try pulling it first"}"#],
         )
         .await;
-        let err = stream_chat(&client(), &url, "nope", &[], &[], |_| {})
+        let err = stream_chat(&client(), &url, "nope", None, &[], &[], |_| {})
             .await
             .unwrap_err();
         assert!(err.to_string().contains("try pulling it first"), "{err}");
@@ -496,7 +533,7 @@ mod tests {
             },
         ];
         let mut events = Vec::new();
-        stream_chat(&client(), &url, "qwen3:8b", &history, &tools, |e| {
+        stream_chat(&client(), &url, "qwen3:8b", None, &history, &tools, |e| {
             events.push(e)
         })
         .await
@@ -539,14 +576,14 @@ mod tests {
     #[test]
     fn sizes_the_context_to_the_request() {
         let short = [ChatMessage::text(Role::User, "Prove it.")];
-        assert_eq!(request_body("m", &short, &[]).get("options"), None);
+        assert_eq!(request_body("m", None, &short, &[]).get("options"), None);
         let pages = [ChatMessage {
             role: Role::User,
             content: "x".repeat(9000),
             images: vec!["data:image/jpeg;base64,AAAA".into(); 3],
             ..Default::default()
         }];
-        let body = request_body("m", &pages, &[]);
+        let body = request_body("m", None, &pages, &[]);
         assert_eq!(body["options"]["num_ctx"], 16384);
         assert_eq!(body["messages"][0]["images"][2], "AAAA");
     }
@@ -566,5 +603,41 @@ mod tests {
         assert_eq!(ids, vec!["llama3.2:latest", "qwen3:8b"]);
         assert_eq!(models[0].detail, None);
         assert_eq!(models[1].detail.as_deref(), Some("8.2B · Q4_K_M"));
+    }
+
+    #[test]
+    fn thinking_models_offer_efforts() {
+        let ids = |model: &str| {
+            let (efforts, default) = thinking_efforts(model);
+            (
+                efforts.into_iter().map(|e| e.id).collect::<Vec<_>>(),
+                default,
+            )
+        };
+        assert_eq!(
+            ids("qwen3:8b"),
+            (vec!["none".into(), "think".into()], Some("think".into()))
+        );
+        assert_eq!(
+            ids("library/gpt-oss:20b"),
+            (
+                vec!["low".into(), "medium".into(), "high".into()],
+                Some("medium".into())
+            )
+        );
+    }
+
+    #[test]
+    fn sends_the_effort_as_think() {
+        let messages = [ChatMessage::text(Role::User, "hi")];
+        let think = |effort| {
+            request_body("m", effort, &messages, &[])
+                .get("think")
+                .cloned()
+        };
+        assert_eq!(think(Some("none")), Some(json!(false)));
+        assert_eq!(think(Some("think")), Some(json!(true)));
+        assert_eq!(think(Some("high")), Some(json!("high")));
+        assert_eq!(think(None), None);
     }
 }

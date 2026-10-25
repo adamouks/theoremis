@@ -66,7 +66,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
 
   /** Auto mode: rounds of reply and tool calls, each tool run on the document as it is then. */
   const runAgent = useCallback(
-    async (doc: Doc, thread: Thread, model: ModelRef, replyId: string, images: Map<string, string>) => {
+    async (doc: Doc, thread: Thread, model: ModelRef, effort: string | undefined, replyId: string, images: Map<string, string>) => {
       const handles = new Handles(doc.blocks);
       const history: ChatMessage[] = buildAgentMessages(doc, thread, systemPrompt, handles, images);
       const env: AgentEnv = {
@@ -129,6 +129,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
             model: model.model,
             messages: history,
             tools: AGENT_TOOLS,
+            effort,
             onEvent: (event) => {
               if (event.type === "delta") {
                 said += event.text;
@@ -183,13 +184,14 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
   );
 
   const run = useCallback(
-    async (doc: Doc, thread: Thread, model: ModelRef, auto: boolean) => {
+    async (doc: Doc, thread: Thread, model: ModelRef, auto: boolean, effort: string | undefined) => {
       const reply: ThreadMessage = {
         id: newId(),
         role: "assistant",
         content: "",
         mode: thread.messages[thread.messages.length - 1]?.mode ?? "ask",
         model,
+        ...(effort ? { effort } : {}),
         ...(auto ? { agent: { status: "running", steps: [], changes: [] } } : {}),
         createdAt: Date.now(),
       };
@@ -206,7 +208,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       const images = names.length ? await loadAttachmentImages(doc.id, names) : new Map<string, string>();
       if (auto) {
         stopping.current = null;
-        await runAgent(doc, thread, model, reply.id, images);
+        await runAgent(doc, thread, model, effort, reply.id, images);
         busy.current = false;
         setStreaming(null);
         return;
@@ -231,6 +233,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
           provider: model.provider,
           model: model.model,
           messages,
+          effort,
           onEvent: (event) => {
             if (event.type === "delta") content += event.text;
             else if (event.type === "reasoning") {
@@ -267,7 +270,17 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
 
   /** Asks in `mode` about `context`, in the document's active thread (or a new one). */
   const send = useCallback(
-    (docId: string, model: ModelRef, mode: Mode, text: string, context: Context | null, newThread = false, attachments: Attachment[] = [], auto = false) => {
+    (
+      docId: string,
+      model: ModelRef,
+      mode: Mode,
+      text: string,
+      context: Context | null,
+      newThread = false,
+      attachments: Attachment[] = [],
+      auto = false,
+      effort?: string,
+    ) => {
       if (busy.current) return;
       const content = text.trim() || DEFAULT_REQUESTS[mode];
       if (!content && !context && !attachments.length) return;
@@ -300,14 +313,14 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         };
         return out.doc;
       }, "meta");
-      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto);
+      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto, effort);
     },
     [run, updateDoc],
   );
 
   /** Replaces the last reply in a thread with a fresh one. */
   const retry = useCallback(
-    (threadId: string, model: ModelRef, auto = false) => {
+    (threadId: string, model: ModelRef, auto = false, effort?: string) => {
       if (busy.current) return;
       const out: { doc?: Doc; thread?: Thread } = {};
       updateDoc((d) => {
@@ -320,7 +333,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         out.doc = patchThread(d, threadId, () => out.thread!);
         return out.doc;
       }, "meta");
-      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto);
+      if (out.doc && out.thread) void run(out.doc, out.thread, model, auto, effort);
     },
     [run, updateDoc],
   );

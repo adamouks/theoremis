@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -29,6 +30,8 @@ pub struct StoredSettings {
     pub onboarded: bool,
     /// The collaborator works on its own (Auto) instead of only proposing (Manual).
     pub auto_mode: bool,
+    /// The effort chosen for each model, keyed `provider:model`, e.g. `chatgpt:gpt-5` → `high`.
+    pub efforts: BTreeMap<String, String>,
 }
 
 /// The settings as the frontend sees them.
@@ -42,6 +45,7 @@ pub struct SettingsView {
     pub last_model: Option<ModelRef>,
     pub onboarded: bool,
     pub auto_mode: bool,
+    pub efforts: BTreeMap<String, String>,
 }
 
 /// A partial update. `None` leaves a field untouched.
@@ -54,6 +58,8 @@ pub struct SettingsUpdate {
     pub last_model: Option<ModelRef>,
     pub onboarded: Option<bool>,
     pub auto_mode: Option<bool>,
+    /// Replaces every model's chosen effort.
+    pub efforts: Option<BTreeMap<String, String>>,
 }
 
 pub struct SettingsStore {
@@ -142,6 +148,9 @@ fn apply_update(settings: &mut StoredSettings, update: SettingsUpdate) -> AppRes
     if let Some(auto_mode) = update.auto_mode {
         settings.auto_mode = auto_mode;
     }
+    if let Some(efforts) = update.efforts {
+        settings.efforts = efforts;
+    }
     Ok(())
 }
 
@@ -168,6 +177,7 @@ fn view_of(settings: &StoredSettings, env: &EnvVars) -> SettingsView {
         last_model: settings.last_model.clone(),
         onboarded: settings.onboarded,
         auto_mode: settings.auto_mode,
+        efforts: settings.efforts.clone(),
     }
 }
 
@@ -310,6 +320,7 @@ mod tests {
                 system_prompt: Some("Be rigorous.".into()),
                 onboarded: Some(true),
                 auto_mode: Some(true),
+                efforts: Some(BTreeMap::from([("chatgpt:gpt-6".into(), "high".into())])),
                 ..Default::default()
             })
             .unwrap();
@@ -318,6 +329,7 @@ mod tests {
         assert_eq!(reloaded.snapshot().system_prompt, "Be rigorous.");
         assert!(reloaded.view().onboarded);
         assert!(reloaded.view().auto_mode);
+        assert_eq!(reloaded.view().efforts["chatgpt:gpt-6"], "high");
 
         #[cfg(unix)]
         {

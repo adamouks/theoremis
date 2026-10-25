@@ -2,6 +2,7 @@ import { memo, useContext, useEffect, useRef, useState, type ClipboardEvent } fr
 import { createPortal } from "react-dom";
 import { api, assetUrl, errorMessage } from "../lib/api";
 import { readAttachment } from "../lib/attachments";
+import { effortLabel } from "../lib/effort";
 import { MODE_LABELS } from "../lib/prompts";
 import { ACCEPTED_FILES } from "../lib/sources";
 import { clockTime, initials, timeAgo } from "../lib/text";
@@ -10,6 +11,7 @@ import {
   type Attachment,
   type Context,
   type Doc,
+  type Effort,
   type Mode,
   type ModelRef,
   type LeanStatus,
@@ -21,7 +23,8 @@ import {
 import { splitProposals, type NumberedBlock } from "../lib/doc";
 import { numberEquations } from "../lib/text";
 import { AgentTimeline } from "./ai/AgentTimeline";
-import { AutoLabel, ComposerBeam, Orb, Shimmer, Sparks, Spotlight, ThreadEdges, type ClickSparkHandle } from "./ai/effects";
+import { AutoLabel, ComposerBeam, Orb, Shimmer, Sparks, Spotlight, ThreadEdges, type Activity, type ClickSparkHandle } from "./ai/effects";
+import { EffortGauge } from "./ai/EffortGauge";
 import { Reasoning } from "./ai/Reasoning";
 import { AutoTextarea } from "./AutoTextarea";
 import { SelectionCorners, type Pin } from "./Block";
@@ -93,6 +96,10 @@ interface Props extends CollaboratorActions {
   /** Auto mode is chosen, and whether the chosen model can work in it (call tools). */
   autoMode: boolean;
   canAct: boolean;
+  /** How hard the chosen model can think, and the effort chosen for it. */
+  efforts: Effort[];
+  effort: string | undefined;
+  onSetEffort: (effort: string) => void;
   /** Files dropped on the window to attach to the next question. */
   dropped: { files: File[]; nonce: number } | null;
   streamingMessageId: string | null;
@@ -133,12 +140,16 @@ export function Collaborator(props: Props) {
 
   const threads = [...doc.threads].sort((a, b) => b.updatedAt - a.updatedAt);
   const last = thread?.messages[thread.messages.length - 1];
+  // The header orb: idle until a reply streams, then thinking, or acting while one of its tools runs.
+  const steps = streamingMessageId ? thread?.messages.find((m) => m.id === streamingMessageId)?.agent?.steps : undefined;
+  const lastStep = steps?.[steps.length - 1];
+  const activity: Activity = !streamingMessageId ? "idle" : lastStep?.kind === "tool" && lastStep.pending ? "acting" : "thinking";
 
   return (
     <aside className="panel">
       <header className="panel-header">
         <div className="panel-title">
-          {streamingMessageId ? <Orb activity="working" /> : <CollaboratorGlyph />}
+          <Orb activity={activity} />
           <span className="panel-title__name">Collaborator</span>
           {(thread || threads.length > 0) && <span className="panel-title__sep">/</span>}
           <div className="menu-anchor panel-title__thread">
@@ -252,6 +263,9 @@ export function Collaborator(props: Props) {
         autoMode={props.autoMode}
         canAct={props.canAct}
         onSetAutoMode={props.onSetAutoMode}
+        efforts={props.efforts}
+        effort={props.effort}
+        onSetEffort={props.onSetEffort}
         dropped={props.dropped}
         prefill={prefill}
         streaming={!!streamingMessageId}
@@ -304,7 +318,7 @@ function EmptyThread({
   }
   return (
     <div className="thread-empty">
-      <Orb activity="thinking" size={32} />
+      <Orb size={32} />
       <p>
         {autoMode
           ? "Tell the collaborator what to do. It edits the document, checks proofs in Lean and draws graphs, and you can undo all of it."
@@ -483,7 +497,9 @@ function AssistantMessage({
         <CollaboratorGlyph />
         <span className="msg__author msg__author--ai">Collaborator</span>
         <span className="msg__time">
-          {MODE_LABELS[message.mode]} · {clockTime(message.createdAt)}
+          {MODE_LABELS[message.mode]}
+          {/* An Auto reply's badge leaves no room; its effort is in the run's summary instead. */}
+          {message.effort && !agent ? ` · ${effortLabel(message.effort)}` : ""} · {clockTime(message.createdAt)}
         </span>
         {agent && (
           <span className="badge-auto" title="Auto mode: the collaborator worked on the document itself.">
@@ -516,6 +532,7 @@ function AssistantMessage({
           doc={doc}
           model={message.model?.model}
           startedAt={message.createdAt}
+          effort={message.effort}
           streaming={streaming}
           leanFooter={streaming ? undefined : leanFooter}
           onShowBlock={actions.onShowBlock}
@@ -527,7 +544,7 @@ function AssistantMessage({
         streaming &&
         !message.reasoning && (
           <div className="thinking">
-            <Orb activity={message.mode === "gaps" ? "reading" : "thinking"} />
+            <Orb activity="thinking" />
             <Shimmer>
               {message.mode === "gaps" ? "Reviewing" : "Thinking"} with {message.model?.model ?? "the model"}…
             </Shimmer>
@@ -740,6 +757,9 @@ function Composer({
   autoMode,
   canAct,
   onSetAutoMode,
+  efforts,
+  effort,
+  onSetEffort,
   dropped,
   prefill,
   streaming,
@@ -758,6 +778,9 @@ function Composer({
   autoMode: boolean;
   canAct: boolean;
   onSetAutoMode: (auto: boolean) => void;
+  efforts: Effort[];
+  effort: string | undefined;
+  onSetEffort: (effort: string) => void;
   dropped: { files: File[]; nonce: number } | null;
   /** Text to put in the box, e.g. a suggestion picked in an empty thread. */
   prefill: { text: string; nonce: number } | null;
@@ -900,6 +923,7 @@ function Composer({
           <button type="button" className="chip chip--add" title="Attach images, PDFs or files" onClick={() => fileInput.current?.click()}>
             + File
           </button>
+          <EffortGauge efforts={efforts} value={effort} onChange={onSetEffort} />
           <div className="mode-switch" role="radiogroup" aria-label="How the collaborator works">
             <button
               type="button"

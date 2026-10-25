@@ -8,6 +8,14 @@ export interface ModelRef {
   model: string;
 }
 
+/** How hard a model can be asked to think (see `Effort` in providers/mod.rs). */
+export interface Effort {
+  /** An OpenAI reasoning effort (`none` … `xhigh`), or Ollama's `none` / `think`. */
+  id: string;
+  /** The provider's own description, when it gives one. */
+  description: string | null;
+}
+
 export interface ModelInfo {
   provider: Provider;
   id: string;
@@ -18,6 +26,10 @@ export interface ModelInfo {
   vision: boolean | null;
   /** Whether the model can call tools, which Auto mode needs, when the provider says. */
   tools: boolean | null;
+  /** The efforts the model takes, least first. Empty when there's no choice to make. */
+  efforts: Effort[];
+  /** The effort the provider uses when none is asked for. */
+  defaultEffort: string | null;
 }
 
 export interface ProviderStatus {
@@ -37,6 +49,8 @@ export interface Settings {
   onboarded: boolean;
   /** The collaborator works on its own (Auto) instead of only proposing (Manual). */
   autoMode: boolean;
+  /** The effort chosen for each model, keyed by `effortKey`. */
+  efforts: Record<string, string>;
 }
 
 export interface SettingsUpdate {
@@ -46,6 +60,7 @@ export interface SettingsUpdate {
   lastModel?: ModelRef;
   onboarded?: boolean;
   autoMode?: boolean;
+  efforts?: Record<string, string>;
 }
 
 export interface ToolCall {
@@ -155,6 +170,8 @@ export interface ThreadMessage {
   /** How long the model reasoned before answering, in whole seconds. */
   thoughtSeconds?: number;
   model?: ModelRef;
+  /** The effort the reply was asked for. */
+  effort?: string;
   error?: string;
   /** The block this reply was inserted as, if any. */
   insertedBlockId?: string;
