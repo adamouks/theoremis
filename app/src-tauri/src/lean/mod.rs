@@ -25,6 +25,10 @@ use check::CheckResult;
 const PROJECT: &str = "TheoremisMath";
 /// Resolves to the Lean version the latest Mathlib is built with.
 const MATHLIB_TOOLCHAIN: &str = "leanprover-community/mathlib4:lean-toolchain";
+/// The Windows process flag that runs a console program without opening a console window.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const ELAN_INIT_SH: &str = "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh";
 const ELAN_INIT_PS1: &str =
     "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.ps1";
@@ -336,6 +340,9 @@ impl Lean {
     /// A command with elan's tools on its PATH, since Lake runs `lean` and `git` itself.
     fn command(&self, program: &Path) -> Command {
         let mut command = Command::new(program);
+        // Theoremis has no console on Windows, so each program would otherwise open one.
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
         let mut paths = vec![self.elan_bin()];
         if let Some(existing) = std::env::var_os("PATH") {
             paths.extend(std::env::split_paths(&existing));

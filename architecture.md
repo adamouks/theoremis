@@ -501,8 +501,8 @@ runtime.
 ## Build, release and updates
 
 - **CI** (`.github/workflows/ci.yml`) runs on every push: typecheck, unit tests and a build
-  for the interface; `cargo fmt`, `clippy -D warnings` and `cargo test` for the backend; a
-  build for the site.
+  for the interface; `cargo fmt`, `clippy -D warnings` and `cargo test` for the backend, on
+  Linux, macOS and Windows; a build for the site.
 - **Release** (`release.yml`) runs after CI succeeds on `main`, only if something under `app/`
   changed. The version is the major.minor from `tauri.conf.json` with the workflow's run
   number as the patch, so every release is newer than the last. It builds installers for

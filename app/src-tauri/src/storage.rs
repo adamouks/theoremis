@@ -224,8 +224,22 @@ async fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);
     tokio::fs::write(&tmp, bytes).await?;
-    tokio::fs::rename(&tmp, path).await?;
-    Ok(())
+    // On Windows a file another program has open (a sync client, an indexer, antivirus) can't
+    // be replaced for a moment; try again briefly before giving up.
+    let mut attempt = 0;
+    loop {
+        match tokio::fs::rename(&tmp, path).await {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied && attempt < 5 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(40 * attempt)).await;
+            }
+            Err(err) => {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return Err(err.into());
+            }
+        }
+    }
 }
 
 /// Ids become file names, so only allow a conservative character set.
