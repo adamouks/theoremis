@@ -360,6 +360,15 @@ async fn lookup_reference(state: tauri::State<'_, AppState>, text: String) -> Ap
     references::lookup(&state.http, &text).await
 }
 
+/// Searches arXiv and Crossref, for "is this known?".
+#[tauri::command]
+async fn search_literature(
+    state: tauri::State<'_, AppState>,
+    query: String,
+) -> AppResult<references::Search> {
+    references::search(&state.http, &query).await
+}
+
 /// Opens the system's print dialog for the page, which can also save it as a PDF.
 #[tauri::command]
 fn print_page(webview: tauri::Webview) -> AppResult<()> {
@@ -478,6 +487,7 @@ pub fn run() {
             save_file,
             print_page,
             lookup_reference,
+            search_literature,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Theoremis");

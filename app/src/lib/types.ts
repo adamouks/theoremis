@@ -156,7 +156,36 @@ export interface Block {
 /** How the collaborator works: proposes (Manual), acts (Auto), or convenes a seminar that acts. */
 export type Work = "manual" | "auto" | "seminar";
 
-export type Mode = "ask" | "explore" | "gaps" | "challenge" | "formalize";
+export type Mode = "ask" | "explore" | "gaps" | "challenge" | "formalize" | "literature";
+
+/** A paper a literature search found, on arXiv or through Crossref (see references.rs). */
+export interface Paper {
+  source: "arXiv" | "Crossref";
+  /** An arXiv id or a DOI: what looking up its BibTeX takes. */
+  id: string;
+  title: string;
+  authors: string[];
+  year: string | null;
+  venue: string | null;
+  summary: string | null;
+  url: string;
+  doi: string | null;
+}
+
+export interface LiteratureSearch {
+  papers: Paper[];
+  /** Services that didn't answer. */
+  unavailable: string[];
+}
+
+/** What an "Is it known?" reply searched for and found, numbered as the reply cites them. */
+export interface Literature {
+  status: "searching" | "done" | "failed";
+  queries: string[];
+  papers: Paper[];
+  unavailable?: string[];
+  error?: string;
+}
 
 export interface Context {
   /** What was selected, e.g. "Proof · (2)–(3)". */
@@ -191,6 +220,8 @@ export interface ThreadMessage {
   agent?: AgentRun;
   /** Who the seminar convened and what each did, for a reply in Seminar mode. */
   seminar?: SeminarRun;
+  /** The search behind an "Is it known?" reply. */
+  literature?: Literature;
   createdAt: number;
 }
 
@@ -259,7 +290,9 @@ export interface SeminarMember {
 export type AgentChange =
   /** `before` is null for an insertion and `after` for a deletion; `index` is where the block was. */
   | { kind: "block"; blockId: string; before: Block | null; after: Block | null; index: number }
-  | { kind: "header"; before: { title: string; lede: string }; after: { title: string; lede: string } };
+  | { kind: "header"; before: { title: string; lede: string }; after: { title: string; lede: string } }
+  /** A reference added to the document's BibTeX. */
+  | { kind: "bibliography"; before: string | undefined; after: string };
 
 export interface Attachment {
   /** The file's name as attached. */

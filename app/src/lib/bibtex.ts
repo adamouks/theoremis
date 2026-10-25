@@ -305,3 +305,29 @@ export function suggestKey(entry: BibEntry, taken: Set<string>): string {
   for (let n = 2; taken.has(key); n++) key = `${base}${String.fromCharCode(95 + n)}`;
   return key;
 }
+
+/** The key of the entry for an arXiv id or a DOI, if `bibliography` has one. */
+export function findReference(bibliography: string | undefined, id: string): string | undefined {
+  // "arXiv:2301.01234v2", "https://doi.org/10.1/X" and "10.1/x" name what they name.
+  const bare = (text: string) =>
+    text
+      .trim()
+      .toLowerCase()
+      .replace(/^(?:arxiv:|https?:\/\/(?:dx\.)?doi\.org\/|doi:)/, "")
+      .replace(/(\d)v\d+$/, "$1");
+  const want = bare(id);
+  return parseBibtex(bibliography ?? "").entries.find((e) => [e.fields.doi, e.fields.eprint].some((value) => value && bare(value) === want))?.key;
+}
+
+/**
+ * Adds a looked-up entry to `bibliography` under a fresh key (its first author and year), with
+ * its title braced so it keeps its capitals. Null if the entry can't be read.
+ */
+export function withReference(bibliography: string | undefined, bibtex: string): { bibliography: string; key: string; entry: BibEntry } | null {
+  const entry = parseBibtex(bibtex).entries[0];
+  if (!entry) return null;
+  const key = suggestKey(entry, new Set(parseBibtex(bibliography ?? "").entries.map((e) => e.key)));
+  const keyed = protectTitle(bibtex.replace(/^(\s*@\s*\w+\s*\{)\s*[^,]*,/, `$1${key},`)).trim();
+  const next = bibliography?.trim() ? `${bibliography.trimEnd()}\n\n${keyed}\n` : `${keyed}\n`;
+  return { bibliography: next, key, entry: parseBibtex(keyed).entries[0] ?? entry };
+}

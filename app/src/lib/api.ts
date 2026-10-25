@@ -5,6 +5,7 @@ import type {
   LeanCheck,
   LeanSetupEvent,
   LeanStatus,
+  LiteratureSearch,
   Doc,
   DocumentSummary,
   Project,
@@ -107,6 +108,8 @@ export const api = {
    */
   saveFile: (name: string, kind: string, bytes: Uint8Array) =>
     invoke<string | null>("save_file", bytes, { headers: { "x-name": name, "x-kind": kind } }),
+  /** Papers on arXiv and Crossref for a search, for "is this known?". */
+  searchLiterature: (query: string) => invoke<LiteratureSearch>("search_literature", { query }),
   /** BibTeX for an arXiv id or a DOI, looked up on arXiv or doi.org. Its key is a placeholder. */
   lookupReference: (text: string) => invoke<string>("lookup_reference", { text }),
   /** The system's print dialog for the page, which can also save it as a PDF. */

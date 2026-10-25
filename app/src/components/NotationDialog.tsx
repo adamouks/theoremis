@@ -3,7 +3,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "../lib/api";
-import { formatEntry, parseBibtex, protectTitle, suggestKey } from "../lib/bibtex";
+import { findReference, formatEntry, parseBibtex, withReference } from "../lib/bibtex";
 import { readMacros } from "../lib/macros";
 import { Check, Close, Copy } from "./Icons";
 import { Markdown } from "./Markdown";
@@ -47,11 +47,11 @@ export function NotationDialog({
     setLooking(true);
     setLookupError(null);
     try {
-      const found = await api.lookupReference(text);
-      const entry = parseBibtex(found).entries[0];
-      if (!entry) throw new Error("The reference that came back couldn’t be read.");
-      const key = suggestKey(entry, new Set(bib.entries.map((e) => e.key)));
-      append(protectTitle(found.replace(/^(\s*@\s*\w+\s*\{)\s*[^,]*,/, `$1${key},`)));
+      const present = findReference(bibliography, text);
+      if (present) throw new Error(`That’s already in the references, as ${present}.`);
+      const added = withReference(bibliography, await api.lookupReference(text));
+      if (!added) throw new Error("The reference that came back couldn’t be read.");
+      setBibliography(added.bibliography);
       setLookup("");
     } catch (err) {
       setLookupError(err instanceof Error ? err.message : errorMessage(err));

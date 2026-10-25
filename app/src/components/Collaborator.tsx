@@ -18,6 +18,7 @@ import {
   type ProviderStatus,
   type StoredLeanCheck,
   type Thread,
+  type Paper,
   type ThreadMessage,
   type Work,
 } from "../lib/types";
@@ -28,6 +29,7 @@ import { AutoLabel, ComposerBeam, Orb, Shimmer, Sparks, Spotlight, ThreadEdges, 
 import { EffortGauge } from "./ai/EffortGauge";
 import { Reasoning } from "./ai/Reasoning";
 import { pendingTool, SeminarView } from "./ai/SeminarView";
+import { Sources } from "./ai/Sources";
 import { AutoTextarea } from "./AutoTextarea";
 import { SelectionCorners, type Pin } from "./Block";
 import {
@@ -49,7 +51,7 @@ import { LeanCheckPanel } from "./LeanCheck";
 import { Markdown, MediaContext, type CodeFooter } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
 
-const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
+const COMPOSER_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize", "literature"];
 
 /** Ways to start a thread, after Prompt Kit's prompt suggestions (MIT, see THIRD_PARTY_NOTICES.md). */
 const SUGGESTIONS = {
@@ -90,6 +92,8 @@ export interface CollaboratorActions {
   onUndoAgent: (threadId: string, messageId: string) => void;
   onSetWork: (work: Work) => void;
   onInsertSuggestion: (threadId: string, messageId: string) => void;
+  /** Adds a paper a search found to the document's references; resolves to its key. */
+  onAddReference: (paper: Paper) => Promise<string>;
   onSelectModel: (model: ModelRef) => void;
   onRefreshModels: () => void;
   onOpenSettings: () => void;
@@ -548,6 +552,8 @@ function AssistantMessage({
           </span>
         )}
       </div>
+
+      {message.literature && <Sources literature={message.literature} bibliography={doc.bibliography} onAdd={actions.onAddReference} />}
 
       {message.reasoning && (
         <Reasoning

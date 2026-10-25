@@ -1,8 +1,8 @@
-import { describeRun, documentForAgent, type Handles } from "./agent";
+import { describePapers, describeRun, documentForAgent, type Handles } from "./agent";
 import { describeSeminar, type Member } from "./seminar";
 import { documentAsText } from "./doc";
 import { notationForPrompt } from "./notation";
-import type { Attachment, ChatMessage, Doc, Mode, Thread, ThreadMessage } from "./types";
+import type { Attachment, ChatMessage, Doc, Literature, Mode, Paper, Thread, ThreadMessage } from "./types";
 
 export const MODE_LABELS: Record<Mode, string> = {
   ask: "Ask",
@@ -10,6 +10,7 @@ export const MODE_LABELS: Record<Mode, string> = {
   gaps: "Find gaps",
   challenge: "Challenge",
   formalize: "Formalize",
+  literature: "Is it known?",
 };
 
 /** What each action asks for when the composer is empty. */
@@ -19,10 +20,13 @@ export const DEFAULT_REQUESTS: Record<Mode, string> = {
   gaps: "Is this fully justified as written?",
   challenge: "Challenge this.",
   formalize: "Formalize this in Lean 4.",
+  literature: "Is this known?",
 };
 
 const MODE_INSTRUCTIONS: Record<Mode, string> = {
   ask: "",
+  literature:
+    "Find out whether the selected result, or one close to it, is already known. Literature search results are given below; in Auto mode, search with search_literature instead, and add what you cite with add_reference. Say which results are the same statement, a stronger or more general one, a special case, or only related, and cite them by their number in brackets, e.g. [2], naming the paper. Read the titles and abstracts: a search result is not evidence until its content matches. Never invent a reference; a paper you are sure of from memory may be named, saying it wasn't among the results. If the results don't settle it, say so plainly and suggest where to look next (MathSciNet, zbMATH, a specialist, the terms to search).",
   explore:
     "Explore the selected statement: test small cases, look for patterns, related known results and generalizations. Label numerical checks as evidence, not proof.",
   gaps:
@@ -85,7 +89,7 @@ function history(thread: Thread, images: Map<string, string>): ChatMessage[] {
     .filter((m) => (m.role === "user" ? !m.error : m.content.trim() || (m.agent && describeRun(m.agent)) || (m.seminar && describeSeminar(m.seminar))))
     .map((m) => {
       if (m.role !== "user") {
-        const actions = m.agent ? describeRun(m.agent) : m.seminar ? describeSeminar(m.seminar) : "";
+        const actions = m.agent ? describeRun(m.agent) : m.seminar ? describeSeminar(m.seminar) : m.literature?.papers.length ? describeSources(m.literature.papers) : "";
         return { role: m.role, content: [m.content.trim(), actions].filter(Boolean).join("\n\n") };
       }
       const sent = (m.attachments ?? []).flatMap((a) => a.images).filter((name) => images.has(name));
@@ -98,6 +102,41 @@ function history(thread: Thread, images: Map<string, string>): ChatMessage[] {
     });
 }
 
+/** The papers an "Is it known?" reply was given, for later turns that refer to them by number. */
+function describeSources(papers: Paper[]): string {
+  return `[The search results you were given: ${papers.map((p, i) => `[${i + 1}] ${p.title} (${p.source === "arXiv" ? `arXiv:${p.id}` : `DOI ${p.id}`})`).join("; ")}.]`;
+}
+
+/** The search results for an "Is it known?" reply, after the question. */
+function literatureNote(literature: Literature): string {
+  const queries = literature.queries.map((q) => `“${q}”`).join(", ");
+  if (literature.status === "failed") return `[The literature search couldn't run: ${literature.error ?? "no connection"}. Answer from what you know, and say the search didn't run.]`;
+  const gaps = literature.unavailable?.length ? ` ${literature.unavailable.join(" and ")} didn't answer, so the results may be incomplete.` : "";
+  if (!literature.papers.length) return `[A search of arXiv and Crossref for ${queries} found nothing.${gaps}]`;
+  return `[Search results from arXiv and Crossref for ${queries}.${gaps}]\n${describePapers(literature.papers)}`;
+}
+
+const QUERIES = `You turn a mathematician's question about a result into literature searches. Reply with one or two search queries, one per line, each 3 to 8 keywords: the standard names of the objects, properties and theorems involved, as a paper's title or abstract would use them. No LaTeX, quotes, numbering, operators or other text.`;
+
+/** The request for the searches behind an "Is it known?" reply. */
+export function buildQueryMessages(doc: Doc, thread: Thread): ChatMessage[] {
+  const asked = [...thread.messages].reverse().find((m) => m.role === "user");
+  const question = asked ? describeTurn({ ...asked, mode: "ask", attachments: [] }, () => 0) : "";
+  return [
+    { role: "system", content: `${QUERIES}\n\nThe document is titled “${doc.title || "Untitled"}”.` },
+    { role: "user", content: question || "Is this known?" },
+  ];
+}
+
+/** The queries in the model's answer to `buildQueryMessages`. */
+export function readQueries(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").replace(/["“”]/g, "").trim())
+    .filter((line) => line.length >= 3 && line.length <= 120)
+    .slice(0, 2);
+}
+
 const capped = (document: string) =>
   document.length > MAX_DOCUMENT_CHARS ? `${document.slice(0, MAX_DOCUMENT_CHARS)}\n\n[… the rest of the document is omitted]` : document;
 
@@ -106,11 +145,14 @@ const capped = (document: string) =>
  * `images` holds the attached images as data URLs, by file name; leave it empty for models
  * that can't see.
  */
-export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, images: Map<string, string> = new Map()): ChatMessage[] {
+export function buildMessages(doc: Doc, thread: Thread, userPrompt: string, images: Map<string, string> = new Map(), literature?: Literature): ChatMessage[] {
   const system = [COLLABORATOR, userPrompt.trim(), `The document, with its current statuses:\n\n${capped(documentAsText(doc))}${notationForPrompt(doc)}`]
     .filter(Boolean)
     .join("\n\n");
-  return [{ role: "system", content: system }, ...history(thread, images)];
+  const turns = history(thread, images);
+  const last = turns[turns.length - 1];
+  if (literature && last?.role === "user") turns[turns.length - 1] = { ...last, content: `${last.content}\n\n${literatureNote(literature)}` };
+  return [{ role: "system", content: system }, ...turns];
 }
 
 const AUTO = `You are in Auto mode. Instead of proposing changes, you make them yourself with your tools, and every change is recorded so the mathematician can undo it.
@@ -136,6 +178,7 @@ const CHAIR = `You are in Seminar mode, chairing a small seminar on the mathemat
 - Formalizer: states results in Lean and checks them.
 - Illustrator: draws graphs that make a statement visible.
 - Editor: makes the exposition clear without changing the mathematics.
+- Librarian: searches the literature for what is already known, and adds the references it cites.
 A small request needs one or two members; don't convene more than the work needs. Write each objective in the member's own voice, and give each the blocks it concerns. Call convene once and don't do the work yourself.`;
 
 /** The chair's request: decide who works on what. */

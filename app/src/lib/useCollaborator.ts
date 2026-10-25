@@ -5,7 +5,17 @@ import { AGENT_TOOLS, Handles, MAX_ROUNDS, undoRun, type AgentEnv } from "./agen
 import { agentLoop, type Mind } from "./agentLoop";
 import { CONVENE, LONE_MEMBER, MEMBER_ROUNDS, concurrency, pool, readConvene, type Member } from "./seminar";
 import { loadAttachmentImages } from "./attachments";
-import { buildAgentMessages, buildConveneMessages, buildMemberMessages, buildMessages, buildSummaryMessages, DEFAULT_REQUESTS, threadImages } from "./prompts";
+import {
+  buildAgentMessages,
+  buildConveneMessages,
+  buildMemberMessages,
+  buildMessages,
+  buildQueryMessages,
+  buildSummaryMessages,
+  DEFAULT_REQUESTS,
+  readQueries,
+  threadImages,
+} from "./prompts";
 import { deriveTitle, newId } from "./text";
 import type {
   AgentRun,
@@ -14,6 +24,7 @@ import type {
   ChatMessage,
   Context,
   Doc,
+  Literature,
   Mode,
   ModelRef,
   SeminarRun,
@@ -42,6 +53,18 @@ function findMessage(doc: Doc, threadId: string, messageId: string) {
   return doc.threads.find((t) => t.id === threadId)?.messages.find((m) => m.id === messageId);
 }
 
+/** Search results an "Is it known?" reply reads, at most. */
+const MAX_SOURCES = 12;
+
+/** A search from the question itself, when the model gave none: its words, without math or markup. */
+function plainQuery(thread: Thread): string {
+  const asked = [...thread.messages].reverse().find((m) => m.role === "user");
+  const text = `${asked?.context?.text ?? ""} ${asked?.content ?? ""}`
+    .replace(/\$\$[\s\S]*?\$\$|\$[^$]*\$/g, " ")
+    .replace(/[*_#`>[\]()]/g, " ");
+  return text.split(/\s+/).filter((w) => w.length > 3).slice(0, 8).join(" ") || "known result";
+}
+
 /** Whole seconds a model reasoned, at least one, or nothing if it didn't. */
 function seconds(ms: number): number | undefined {
   return ms > 0 ? Math.max(1, Math.round(ms / 1000)) : undefined;
@@ -53,6 +76,7 @@ const THREAD_VERBS: Record<Mode, string> = {
   gaps: "Review of",
   challenge: "Challenging",
   formalize: "Formalizing",
+  literature: "Is it known:",
 };
 
 export function createThread(): Thread {
@@ -101,6 +125,8 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       documents: summaries.current.filter((d) => d.projectId === doc.projectId && d.id !== doc.id),
       lean: (code) => api.leanCheck(code),
       origin: { threadId: thread.id, messageId: replyId },
+      search: (query) => api.searchLiterature(query),
+      lookup: (id) => api.lookupReference(id),
       ...(seen ? { seen } : {}),
     }),
     [transactDocument],
@@ -336,7 +362,62 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
         setStreaming(null);
         return;
       }
-      const messages = buildMessages(doc, thread, systemPrompt, images);
+      // Is it known? The model writes the searches, Theoremis runs them on arXiv and Crossref,
+      // and the reply reads the results.
+      let literature: Literature | undefined;
+      if (reply.mode === "literature") {
+        const found: Literature = { status: "searching", queries: [], papers: [] };
+        literature = found;
+        const show = () => mutateDocument(doc.id, (d) => patchMessage(d, thread.id, reply.id, { literature: { ...found, papers: [...found.papers] } }), "meta");
+        show();
+        try {
+          let said = "";
+          const ask = newId();
+          track(reply.id, ask, true);
+          try {
+            await api.streamChat({
+              requestId: ask,
+              provider: model.provider,
+              model: model.model,
+              messages: buildQueryMessages(doc, thread),
+              effort,
+              onEvent: (event) => {
+                if (event.type === "delta") said += event.text;
+              },
+            });
+          } finally {
+            track(reply.id, ask, false);
+          }
+          found.queries = readQueries(said);
+          if (!found.queries.length) found.queries = [plainQuery(thread)];
+          show();
+          const seen = new Set<string>();
+          const unavailable = new Set<string>();
+          for (const query of found.queries) {
+            if (stopping.current === reply.id) break;
+            const result = await api.searchLiterature(query);
+            for (const paper of result.papers) {
+              if (seen.has(paper.id)) continue;
+              seen.add(paper.id);
+              found.papers.push(paper);
+            }
+            for (const name of result.unavailable) unavailable.add(name);
+          }
+          found.papers = found.papers.slice(0, MAX_SOURCES);
+          found.unavailable = [...unavailable];
+          found.status = "done";
+        } catch (err) {
+          found.status = "failed";
+          found.error = errorMessage(err);
+        }
+        show();
+        if (stopping.current === reply.id) {
+          busy.current = false;
+          setStreaming(null);
+          return;
+        }
+      }
+      const messages = buildMessages(doc, thread, systemPrompt, images, literature);
 
       let content = "";
       let reasoning = "";
@@ -388,7 +469,7 @@ export function useCollaborator(workspace: WorkspaceApi, systemPrompt: string, c
       busy.current = false;
       setStreaming(null);
     },
-    [mutateDocument, currentDocId, systemPrompt, runAgent, runSeminar, flushWorkspace],
+    [mutateDocument, currentDocId, systemPrompt, runAgent, runSeminar, flushWorkspace, track],
   );
 
   /** Asks in `mode` about `context`, in the document's active thread (or a new one). */

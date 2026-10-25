@@ -1,9 +1,47 @@
-//! Looking up a reference as BibTeX from what a mathematician has at hand: an arXiv id (or its
-//! abs/pdf link) or a DOI (or its doi.org link). arXiv's API answers in Atom, which is turned
-//! into a @misc entry; doi.org answers in BibTeX itself, through content negotiation served by
-//! Crossref and DataCite. Both are free and need no account.
+//! References from the outside world, through free services that need no account.
+//!
+//! Looking one up as BibTeX from what a mathematician has at hand: an arXiv id (or its abs/pdf
+//! link) or a DOI (or its doi.org link). arXiv's API answers in Atom, which is turned into a
+//! @misc entry; doi.org answers in BibTeX itself, through content negotiation served by
+//! Crossref and DataCite.
+//!
+//! Searching the literature, for "is this known?": arXiv's search for preprints, with their
+//! abstracts, and Crossref's for published work.
+
+use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
+
+/// A paper a search found.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Paper {
+    /// "arXiv" or "Crossref".
+    pub source: &'static str,
+    /// What `lookup` takes to give its BibTeX: an arXiv id or a DOI.
+    pub id: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub year: Option<String>,
+    /// Where it appeared: a journal, or "arXiv:2301.01234 [math.NT]".
+    pub venue: Option<String>,
+    /// The abstract, shortened, when the source gives one.
+    pub summary: Option<String>,
+    pub url: String,
+    /// Its DOI, if it has one: a preprint's published version, or the work itself.
+    pub doi: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Search {
+    pub papers: Vec<Paper>,
+    /// Services that didn't answer, so the result may be partial.
+    pub unavailable: Vec<String>,
+}
+
+/// How many papers each service is asked for.
+const PER_SOURCE: usize = 8;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Identifier {
@@ -124,6 +162,229 @@ pub async fn lookup(http: &reqwest::Client, text: &str) -> AppResult<String> {
             "That isn't an arXiv id or a DOI. Try 2301.01234, arXiv:math/0601001 or 10.4007/annals.2005.162.1.",
         )),
     }
+}
+
+/// Searches arXiv and Crossref for `query` at once. A service that fails is named, not fatal.
+pub async fn search(http: &reqwest::Client, query: &str) -> AppResult<Search> {
+    let words = search_words(query);
+    if words.is_empty() {
+        return Err(AppError::msg("Nothing to search for."));
+    }
+    let (arxiv, crossref) = tokio::join!(search_arxiv(http, &words), search_crossref(http, query));
+    let mut unavailable = Vec::new();
+    let mut papers = arxiv.unwrap_or_else(|_| {
+        unavailable.push("arXiv".to_string());
+        Vec::new()
+    });
+    let published = crossref.unwrap_or_else(|_| {
+        unavailable.push("Crossref".to_string());
+        Vec::new()
+    });
+    // A preprint whose published version Crossref also found is listed once, as the preprint,
+    // which has the abstract.
+    let dois: Vec<String> = papers.iter().filter_map(|p| p.doi.clone()).collect();
+    papers.extend(
+        published
+            .into_iter()
+            .filter(|p| !p.doi.as_ref().is_some_and(|d| dois.contains(d))),
+    );
+    Ok(Search {
+        papers,
+        unavailable,
+    })
+}
+
+/// The words of a query worth searching on: letters and digits, at most eight.
+fn search_words(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '\''))
+        .map(|w| w.trim_matches(['-', '\'']))
+        .filter(|w| w.chars().count() >= 2)
+        .take(8)
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// `text` as one URL query component.
+fn encode(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+async fn search_arxiv(http: &reqwest::Client, words: &[String]) -> AppResult<Vec<Paper>> {
+    // Every word must appear; with none found, the first three alone.
+    for count in [words.len(), words.len().min(3)] {
+        let terms = words[..count]
+            .iter()
+            .map(|w| format!("all:{}", encode(w)))
+            .collect::<Vec<_>>()
+            .join("+AND+");
+        let url = format!(
+            "https://export.arxiv.org/api/query?search_query={terms}&start=0&max_results={PER_SOURCE}&sortBy=relevance&sortOrder=descending"
+        );
+        let atom = http
+            .get(url)
+            .timeout(std::time::Duration::from_secs(20))
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)?
+            .text()
+            .await?;
+        let papers = arxiv_papers(&atom);
+        if !papers.is_empty() || count == words.len().min(3) {
+            return Ok(papers);
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// The papers in an arXiv search's Atom answer.
+pub fn arxiv_papers(atom: &str) -> Vec<Paper> {
+    elements(atom, "entry")
+        .filter_map(|entry| {
+            let title = element(entry, "title").map(tidy)?;
+            let link = element(entry, "id").map(tidy)?;
+            let id = link.rsplit("/abs/").next()?.to_string();
+            if title.is_empty() || title == "Error" || id.is_empty() {
+                return None;
+            }
+            let base = id
+                .rsplit_once('v')
+                .filter(|(_, v)| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()))
+                .map_or(id.as_str(), |(base, _)| base)
+                .to_string();
+            let category = attribute(entry, "primary_category", "term");
+            let venue = element(entry, "journal_ref")
+                .map(tidy)
+                .filter(|j| !j.is_empty())
+                .unwrap_or_else(|| match category {
+                    Some(c) => format!("arXiv:{base} [{c}]"),
+                    None => format!("arXiv:{base}"),
+                });
+            let summary = element(entry, "summary")
+                .map(tidy)
+                .map(|s| shorten(&s, 700));
+            Some(Paper {
+                source: "arXiv",
+                url: format!("https://arxiv.org/abs/{base}"),
+                id: base,
+                title,
+                authors: elements(entry, "author")
+                    .filter_map(|a| element(a, "name").map(tidy))
+                    .filter(|n| !n.is_empty())
+                    .collect(),
+                year: element(entry, "published")
+                    .and_then(|p| p.trim().get(..4))
+                    .map(str::to_string),
+                venue: Some(venue),
+                summary,
+                doi: element(entry, "doi")
+                    .map(tidy)
+                    .filter(|d| !d.is_empty())
+                    .map(|d| d.to_ascii_lowercase()),
+            })
+        })
+        .collect()
+}
+
+async fn search_crossref(http: &reqwest::Client, query: &str) -> AppResult<Vec<Paper>> {
+    let url = format!(
+        "https://api.crossref.org/works?query.bibliographic={}&rows={PER_SOURCE}&select=DOI,title,author,container-title,issued,type",
+        encode(query.trim())
+    );
+    let body: serde_json::Value = http
+        .get(url)
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)?
+        .json()
+        .await?;
+    Ok(crossref_papers(&body))
+}
+
+/// The works in a Crossref search's answer, leaving out parts of works (chapters' figures…).
+pub fn crossref_papers(body: &serde_json::Value) -> Vec<Paper> {
+    let Some(items) = body["message"]["items"].as_array() else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item["type"].as_str(),
+                Some("component" | "dataset" | "peer-review" | "grant" | "journal-issue")
+            )
+        })
+        .filter_map(|item| {
+            let doi = item["DOI"].as_str()?.to_ascii_lowercase();
+            let title = strip_tags(item["title"].get(0)?.as_str()?);
+            if title.is_empty() {
+                return None;
+            }
+            let authors = item["author"]
+                .as_array()
+                .map(|people| {
+                    people
+                        .iter()
+                        .filter_map(|p| {
+                            let given = p["given"].as_str().unwrap_or("");
+                            let family = p["family"].as_str().or(p["name"].as_str())?;
+                            Some(format!("{given} {family}").trim().to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(Paper {
+                source: "Crossref",
+                url: format!("https://doi.org/{doi}"),
+                title,
+                authors,
+                year: item["issued"]["date-parts"][0][0]
+                    .as_i64()
+                    .map(|y| y.to_string()),
+                venue: item["container-title"]
+                    .get(0)
+                    .and_then(|v| v.as_str())
+                    .map(strip_tags)
+                    .filter(|v| !v.is_empty()),
+                summary: None,
+                doi: Some(doi.clone()),
+                id: doi,
+            })
+        })
+        .collect()
+}
+
+/// Crossref titles can carry markup (<i>, MathML); keep the text.
+fn strip_tags(text: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for c in text.chars() {
+        match c {
+            '<' => inside = true,
+            '>' if inside => inside = false,
+            _ if !inside => out.push(c),
+            _ => {}
+        }
+    }
+    tidy(&out)
+}
+
+fn shorten(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(limit).collect();
+    let end = cut.rfind(' ').unwrap_or(cut.len());
+    format!("{}…", &cut[..end])
 }
 
 /// The text of the first `<name>…</name>` in `xml`, whatever its namespace prefix.
@@ -385,6 +646,74 @@ mod tests {
         assert_eq!(identify("Fermat's Last Theorem"), None);
         assert_eq!(identify("2301.123"), None);
         assert_eq!(identify("10.12/x"), None);
+    }
+
+    #[test]
+    fn reads_arxiv_search_results() {
+        let feed = format!(
+            "{}{}",
+            ATOM.replace("</feed>", ""),
+            r#"<entry><id>http://arxiv.org/abs/math/0404188v6</id><published>2004-04-08T00:00:00Z</published><title>The primes contain arbitrarily long arithmetic progressions</title><summary>We prove that there are arbitrarily long arithmetic progressions of primes.</summary><author><name>Ben Green</name></author><author><name>Terence Tao</name></author><arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="math.NT"/></entry></feed>"#
+        );
+        let papers = arxiv_papers(&feed);
+        assert_eq!(papers.len(), 2);
+        assert_eq!(papers[0].id, "2301.01234");
+        assert_eq!(
+            papers[0].venue.as_deref(),
+            Some("Ann. of Math. 199 (2024) 1-40")
+        );
+        assert_eq!(papers[0].doi.as_deref(), Some("10.4007/annals.2024.1"));
+        assert_eq!(papers[0].summary.as_deref(), Some("We study sums."));
+        assert_eq!(papers[1].id, "math/0404188");
+        assert_eq!(papers[1].url, "https://arxiv.org/abs/math/0404188");
+        assert_eq!(
+            papers[1].venue.as_deref(),
+            Some("arXiv:math/0404188 [math.NT]")
+        );
+        assert_eq!(papers[1].authors, ["Ben Green", "Terence Tao"]);
+        assert_eq!(papers[1].year.as_deref(), Some("2004"));
+        assert!(arxiv_papers(r#"<feed><entry><id>http://arxiv.org/api/errors#x</id><title>Error</title></entry></feed>"#).is_empty());
+    }
+
+    #[test]
+    fn reads_crossref_search_results() {
+        let body = serde_json::json!({
+            "status": "ok",
+            "message": { "items": [
+                { "DOI": "10.2307/2118559", "type": "journal-article", "title": ["Modular Elliptic Curves and Fermat's Last Theorem"],
+                  "author": [{ "given": "Andrew", "family": "Wiles" }], "container-title": ["The Annals of Mathematics"],
+                  "issued": { "date-parts": [[1995, 5]] } },
+                { "DOI": "10.1000/X", "type": "book-chapter", "title": ["On <i>p</i>-adic <mml:math><mml:mi>L</mml:mi></mml:math>-functions"],
+                  "author": [{ "name": "The Consortium" }] },
+                { "DOI": "10.1000/fig", "type": "component", "title": ["Figure 2"] },
+                { "DOI": "10.1000/untitled", "type": "journal-article" }
+            ] }
+        });
+        let papers = crossref_papers(&body);
+        assert_eq!(papers.len(), 2);
+        assert_eq!(
+            papers[0].title,
+            "Modular Elliptic Curves and Fermat's Last Theorem"
+        );
+        assert_eq!(papers[0].authors, ["Andrew Wiles"]);
+        assert_eq!(papers[0].year.as_deref(), Some("1995"));
+        assert_eq!(
+            papers[0].venue.as_deref(),
+            Some("The Annals of Mathematics")
+        );
+        assert_eq!(papers[0].url, "https://doi.org/10.2307/2118559");
+        assert_eq!(papers[1].title, "On p-adic L-functions");
+        assert_eq!(papers[1].id, "10.1000/x");
+        assert_eq!(papers[1].authors, ["The Consortium"]);
+    }
+
+    #[test]
+    fn makes_search_terms() {
+        assert_eq!(
+            search_words("Sum of the first n odd numbers, n^2!"),
+            ["sum", "of", "the", "first", "odd", "numbers"]
+        );
+        assert_eq!(encode("Erdős & co"), "Erd%C5%91s%20%26%20co");
     }
 
     #[test]

@@ -20,6 +20,8 @@ export const WORKING: Record<string, string> = {
   set_title: "Retitling",
   check_lean: "Checking with Lean",
   check_graph: "Checking a graph",
+  search_literature: "Searching the literature",
+  add_reference: "Adding a reference",
 };
 
 export type ToolStep = Extract<AgentStep, { kind: "tool" }>;

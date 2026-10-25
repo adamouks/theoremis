@@ -4,10 +4,11 @@
 // next one, so each step is one read-modify-write and can be tested on a plain Doc.
 
 import { errorMessage } from "./api";
+import { findReference, formatEntry, withReference } from "./bibtex";
 import { documentAsText, numberBlocks } from "./doc";
 import { parseGraph } from "./graph/spec";
 import { leadingLabel, newId } from "./text";
-import type { AgentChange, AgentRun, Block, Doc, DocumentSummary, LeanCheck, Status, StoredLeanCheck, ToolCall, ToolSpec } from "./types";
+import type { AgentChange, AgentRun, Block, Doc, DocumentSummary, LeanCheck, LiteratureSearch, Paper, Status, StoredLeanCheck, ToolCall, ToolSpec } from "./types";
 
 /** Rounds of tool calls in one reply before the collaborator has to stop and report. */
 export const MAX_ROUNDS = 24;
@@ -88,6 +89,18 @@ export const AGENT_TOOLS: ToolSpec[] = [
     parameters: object({ code: { type: "string", description: "The whole Lean file." }, block: handle }, ["code"]),
   },
   {
+    name: "search_literature",
+    description:
+      "Search arXiv and Crossref for papers, to find whether a result is known and where. Use the standard names of the objects and results involved, in 3–8 keywords, no LaTeX. Returns titles, authors, years, venues, ids and, for arXiv, abstracts.",
+    parameters: object({ query: { type: "string" } }, ["query"]),
+  },
+  {
+    name: "add_reference",
+    description:
+      "Add a paper to the document's references by its arXiv id or DOI (from search_literature, or one you are sure of), and get the key to cite it with \\cite{key} in the document. Only add what you cite.",
+    parameters: object({ id: { type: "string", description: "An arXiv id such as 2301.01234, or a DOI such as 10.4007/annals.2005.162.1." } }, ["id"]),
+  },
+  {
     name: "check_graph",
     description:
       "Check graph code before putting it in the document: returns what each line draws and any errors. The code is what goes inside a ```graph (dim 2) or ```graph3d (dim 3) fence.",
@@ -155,6 +168,10 @@ export interface AgentEnv {
   lean(code: string): Promise<LeanCheck>;
   /** The reply doing the work, recorded on what it writes. */
   origin: { threadId: string; messageId: string };
+  /** Searches arXiv and Crossref. */
+  search?(query: string): Promise<LiteratureSearch>;
+  /** BibTeX for an arXiv id or a DOI. */
+  lookup?(id: string): Promise<string>;
   /**
    * In Seminar mode, each block's text as this member last saw it. Others change the document
    * at the same time, so an edit to a block that changed since is held back until it reads again.
@@ -206,6 +223,10 @@ export async function runTool(env: AgentEnv, handles: Handles, call: ToolCall): 
         return await checkLean(env, handles, args);
       case "check_graph":
         return checkGraph(args);
+      case "search_literature":
+        return await searchLiterature(env, text(args.query));
+      case "add_reference":
+        return await addReference(env, text(args.id));
       default:
         return failed(`There is no tool called ${call.name}.`, `Tried a tool that doesn't exist (${call.name})`);
     }
@@ -478,12 +499,70 @@ export function checkGraph(args: Record<string, unknown>): ToolOutcome {
   return { output, step: { label: errors.length ? "Checked a graph · it has errors" : "Checked a graph", ok: !errors.length }, changes: [] };
 }
 
+/** Papers, numbered, as the model and the step's details show them. */
+export function describePapers(papers: Paper[]): string {
+  return papers
+    .map((p, i) => {
+      const who = p.authors.length > 3 ? `${p.authors.slice(0, 3).join(", ")} et al.` : p.authors.join(", ");
+      const id = p.source === "arXiv" ? `arXiv:${p.id}` : `DOI ${p.id}`;
+      const lines = [`[${i + 1}] ${who || "Unknown authors"}, “${p.title}”${p.venue ? `, ${p.venue}` : ""}${p.year ? ` (${p.year})` : ""}. ${id}.`];
+      if (p.summary) lines.push(`    ${p.summary}`);
+      return lines.join("\n");
+    })
+    .join("\n");
+}
+
+async function searchLiterature(env: AgentEnv, query: string): Promise<ToolOutcome> {
+  if (!env.search) return failed("Searching isn't available here.", "Couldn't search the literature");
+  if (!query) return failed("Give a query: the standard names of what you're looking for.", "Searched for nothing");
+  const found = await env.search(query);
+  const gaps = found.unavailable.length ? ` (${found.unavailable.join(" and ")} didn't answer, so this may be incomplete)` : "";
+  if (!found.papers.length) {
+    return { output: `Nothing found for “${query}”${gaps}. Try other words, or the result's usual name.`, step: { label: `Searched the literature for “${query}”: nothing found`, ok: true }, changes: [] };
+  }
+  const list = describePapers(found.papers);
+  return {
+    output: `Found for “${query}”${gaps}:\n${list}\n\nThese are search results, not checked claims: read the titles and abstracts before saying a result is known. Add what you cite with add_reference.`,
+    step: { label: `Searched the literature for “${query}”: ${found.papers.length} ${found.papers.length === 1 ? "paper" : "papers"}`, detail: list, ok: true },
+    changes: [],
+  };
+}
+
+async function addReference(env: AgentEnv, id: string): Promise<ToolOutcome> {
+  if (!env.lookup) return failed("Adding references isn't available here.", "Couldn't add a reference");
+  if (!id) return failed("Give the paper's arXiv id or DOI.", "Tried to add a reference without an id");
+  const already = (key: string): ToolOutcome => ({ output: `Already in the references: cite it with \\cite{${key}}.`, step: { label: `Found ${key} already in the references`, ok: true }, changes: [] });
+  // The same paper twice gets its first key back.
+  const present = await env.transact((doc) => ({ doc, result: findReference(doc.bibliography, id) }));
+  if (present) return already(present);
+  const bibtex = await env.lookup(id);
+  return env.transact((doc) => {
+    const again = findReference(doc.bibliography, id);
+    if (again) return unchanged(doc, already(again));
+    const added = withReference(doc.bibliography, bibtex);
+    if (!added) return unchanged(doc, failed(`The reference for ${id} couldn't be read.`, `Couldn't read the reference for ${id}`));
+    const written = formatEntry(added.entry).replace(/\*+/g, "");
+    return {
+      doc: { ...doc, bibliography: added.bibliography },
+      result: {
+        output: `Added: ${written} Cite it with \\cite{${added.key}}.`,
+        step: { label: `Added ${added.key} to the references: ${written}`, ok: true },
+        changes: [{ kind: "bibliography", before: doc.bibliography, after: added.bibliography }],
+      },
+    };
+  });
+}
+
 /** Takes back everything a run changed, newest first. Blocks edited since keep their place. */
 export function undoRun(doc: Doc, run: Pick<AgentRun, "changes">): Doc {
   let next = doc;
   for (const change of [...run.changes].reverse()) {
     if (change.kind === "header") {
       next = { ...next, title: change.before.title, lede: change.before.lede };
+      continue;
+    }
+    if (change.kind === "bibliography") {
+      next = { ...next, bibliography: change.before };
       continue;
     }
     const at = next.blocks.findIndex((b) => b.id === change.blockId);

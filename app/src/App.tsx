@@ -17,7 +17,7 @@ import { SourceViewer } from "./components/SourceViewer";
 import { Welcome, type WelcomeChoice } from "./components/Welcome";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "./lib/api";
-import { formatEntry } from "./lib/bibtex";
+import { findReference, formatEntry, withReference } from "./lib/bibtex";
 import { exportLatex } from "./lib/exportDocument";
 import { citationSignature, citedReferences, readNotation } from "./lib/notation";
 import { blockContext, numberBlocks } from "./lib/doc";
@@ -687,6 +687,22 @@ export default function App() {
                 blocks: d.blocks.map((b) => (b.id === blockId ? { ...b, status: "verified", note: "checked in Lean" } : b)),
               }))
             }
+            onAddReference={async (paper) => {
+              const present = findReference(doc.bibliography, paper.id) ?? (paper.doi ? findReference(doc.bibliography, paper.doi) : undefined);
+              if (present) return present;
+              const bibtex = await api.lookupReference(paper.id);
+              // Added to the references as they are when the lookup comes back.
+              let key: string | undefined;
+              updateDoc((d) => {
+                const added = withReference(d.bibliography, bibtex);
+                if (!added) return d;
+                key = added.key;
+                return { ...d, bibliography: added.bibliography };
+              });
+              if (!key) throw new Error("The reference couldn’t be read.");
+              setNotice({ text: `Added to the references: cite it with \\cite{${key}}` });
+              return key;
+            }}
             onFollowUp={(mode, text) => selected && collab.send(doc.id, selected, mode, text, null, false, [], work, effort)}
           />
         ))}

@@ -48,7 +48,7 @@ interface Props {
   banner?: ReactNode;
 }
 
-const TOOLBAR_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize"];
+const TOOLBAR_MODES: Mode[] = ["explore", "gaps", "challenge", "formalize", "literature"];
 
 export function DocumentView({
   doc,
