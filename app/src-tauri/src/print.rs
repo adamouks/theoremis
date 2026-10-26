@@ -10,10 +10,13 @@
 //! reads `@page`.
 
 use tauri::Webview;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use tauri::webview::PlatformWebview;
 
 /// The page's margins, as in styles.css: 22mm at the top and bottom, 20mm at the sides.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const TOP_AND_BOTTOM_MM: f64 = 22.0;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const SIDES_MM: f64 = 20.0;
 
 /// Opens the print dialog for the webview's page.
