@@ -5232,6 +5232,13 @@ a:hover {
   page-break-after: avoid;
 }
 
+/* A heading that starts a page starts at its very top, and the tops of its letters reach a
+   little above its line: macOS's WebKit then draws it on the page before too, clipped from sight
+   but in the PDF's text. A little room above it keeps it on its own page. */
+.print-root .markdown > :is(h1, h2, h3, h4, h5, h6):first-child {
+  padding-top: 0.25em;
+}
+
 .print-root .markdown :is(p, li, blockquote, pre) {
   orphans: 3;
   widows: 3;

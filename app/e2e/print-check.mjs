@@ -214,7 +214,7 @@ async function checkPdf(file, name, expected) {
   }
   // The page's margins (styles.css, @page): 20mm at the sides, 22mm at the top and bottom, around
   // a column 170mm wide. Text printed smaller, or pushed into a margin, means the pages were
-  // drawn at another size than they were counted at.
+  // drawn at another size than they were counted at, or that a line was drawn on two pages.
   const left = Math.min(...pages.map((p) => p.left));
   const right = Math.min(...pages.map((p) => p.right));
   const bottom = Math.min(...pages.map((p) => p.bottom));
@@ -223,7 +223,7 @@ async function checkPdf(file, name, expected) {
   check(right >= 15, `${name}: text reaches ${Math.round(right)}mm from the right edge, into the margin`);
   check(paperWidth - left - right >= 150, `${name}: the text is ${Math.round(paperWidth - left - right)}mm wide, not about 170mm`);
   check(pages[0].top >= 15 && pages[0].top <= 30, `${name}: text starts ${Math.round(pages[0].top)}mm from the top edge, not about 22mm`);
-  check(bottom >= 15, `${name}: text reaches ${Math.round(bottom)}mm from the bottom edge, into the margin`);
+  check(bottom >= 18, `${name}: text reaches ${Math.round(bottom)}mm from the bottom edge, into the margin`);
   console.log(
     `${name}: ${pages.length} pages of ${pages[0].paper}mm, margins ${[pages[0].top, right, bottom, left].map(Math.round).join("/")}mm; content reaches ${pages.map((p) => `${Math.round(p.reach * 100)}%`).join(", ")}`,
   );

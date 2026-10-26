@@ -32,14 +32,20 @@ pub fn print(webview: &Webview) -> tauri::Result<()> {
 /// for the next print) and its own thread, in a sheet on the window; but with the page's margins.
 #[cfg(target_os = "macos")]
 fn print_with_margins(platform: PlatformWebview) {
-    use objc2::msg_send;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
+    use objc2::{msg_send, sel};
     use objc2_app_kit::{NSPrintInfo, NSPrintOperation, NSWindow};
 
     const POINTS_PER_MM: f64 = 72.0 / 25.4;
     // SAFETY: the pointer is the webview's WKWebView, alive while Tauri runs this on the main thread.
     let webview = unsafe { &*platform.inner().cast::<AnyObject>() };
+    // Before macOS 11 WebKit can't print a WKWebView; wry doesn't print there either.
+    let can_print: bool =
+        unsafe { msg_send![webview, respondsToSelector: sel!(printOperationWithPrintInfo:)] };
+    if !can_print {
+        return;
+    }
     let info = NSPrintInfo::sharedPrintInfo();
     info.setTopMargin(TOP_AND_BOTTOM_MM * POINTS_PER_MM);
     info.setBottomMargin(TOP_AND_BOTTOM_MM * POINTS_PER_MM);
