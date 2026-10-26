@@ -70,18 +70,6 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run test:print -- --macos
-      - name: Print experiments (diagnosis)
-        if: always()
-        run: |
-          npx vite --port 14300 --strictPort > /tmp/vite.log 2>&1 &
-          sleep 6
-          URL=http://localhost:14300/e2e/print.html
-          mkdir -p e2e/out
-          swift e2e/print-macos-panel.swift "$URL" "$PWD/e2e/out/exp-panel-a4.pdf" a4 panel || true
-          swift e2e/print-macos-panel.swift "$URL" "$PWD/e2e/out/exp-preview-a4.pdf" a4 preview || true
-          swift e2e/print-macos.swift "$URL" "$PWD/e2e/out/exp-plain-a4.pdf" a4 || true
-          echo "--- WebKit printing log"
-          log show --last 15m --info --debug --style compact --predicate 'category == "Printing"' | tail -n 400 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

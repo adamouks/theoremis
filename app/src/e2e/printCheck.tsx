@@ -14,16 +14,30 @@ import { numberBlocks } from "../lib/doc";
 import { QUARTIC_LEAN, QUARTIC_PHRASES, quarticDocument } from "../lib/fixtures/quartic";
 import { printedBlocks } from "../lib/printLayout";
 
-// ?blocks=N prints only the first N blocks: a shorter document, for checking that one print doesn't
-// limit the next.
+// ?pad=N adds N remarks before the Lean section, so the same document is longer and its page
+// breaks fall elsewhere: where the pages break decides whether a print that counts its pages wrong
+// loses any. ?blocks=N prints only the first N blocks.
+const params = new URLSearchParams(location.search);
+const pad = Number(params.get("pad")) || 0;
+const remarks = Array.from({ length: pad }, (_, i) => `Remark ${i + 1} (length ${pad})`);
 const full = quarticDocument();
-const limit = Number(new URLSearchParams(location.search).get("blocks")) || full.blocks.length;
-const doc = { ...full, blocks: full.blocks.slice(0, limit) };
+const lean = full.blocks.findIndex((b) => b.source.startsWith("## 3 Lean"));
+const padded = [
+  ...full.blocks.slice(0, lean),
+  ...remarks.map((name, i) => ({
+    id: `pad${i + 1}`,
+    source: `**${name}.** Completing the square once more, $P_a(x) - m(a)$ is a sum of squares in $x$ for every fixed $a$: it is $(x^2 - a)^2$ when $a > 0$ and $x^4 - 2ax^2$ when $a \\le 0$. So every bound in Theorem 1 comes with a certificate that can be checked line by line, by hand or by a computer, and the same holds for the strict version of the criterion in Theorem 2.`,
+  })),
+  ...full.blocks.slice(lean),
+];
+const limit = Number(params.get("blocks")) || padded.length;
+const doc = { ...full, blocks: padded.slice(0, limit) };
 const numbered = numberBlocks(doc.blocks);
+const before = QUARTIC_PHRASES.indexOf("3 Lean 4 formalization");
 
 (window as unknown as { __printCheck: unknown }).__printCheck = {
   blocks: printedBlocks(numbered).map((n) => n.block.id),
-  phrases: QUARTIC_PHRASES,
+  phrases: [...QUARTIC_PHRASES.slice(0, before), ...remarks, ...QUARTIC_PHRASES.slice(before)],
   lean: QUARTIC_LEAN.split("\n").filter((line) => line.trim()),
 };
 
