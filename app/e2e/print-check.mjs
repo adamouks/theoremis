@@ -10,13 +10,16 @@
 // - pages are filled: no page but the last ends with much of it empty, unless the next page
 //   starts with a figure too tall for the space left (figures are kept whole).
 //
-// Chromium prints the PDFs (A4 and US Letter). With --webkit, WebKitGTK prints them too, the
+// Chromium prints the PDFs (A4 and US Letter). With --macos, on a Mac, macOS's WebKit prints them
+// too, through the same print operation Theoremis uses there (print-macos.swift). With --webkit,
+// WebKitGTK prints them too, the
 // engine Tauri uses on Linux and the nearest to macOS's (needs python3-gi, gir1.2-webkit2-4.1 and
 // xvfb-run; PYTHON names the interpreter with those bindings). The PDFs are written to e2e/out
 // for a look.
 //
 //   npm run test:print            # Chromium
 //   npm run test:print -- --webkit
+//   npm run test:print -- --macos
 
 import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
@@ -31,6 +34,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, "out");
 mkdirSync(out, { recursive: true });
 const webkit = process.argv.includes("--webkit");
+const macos = process.argv.includes("--macos");
 
 const failures = [];
 const check = (ok, message) => {
@@ -112,6 +116,14 @@ if (webkit) {
     await checkPdf(file, `WebKit ${paper === "a4" ? "A4" : "Letter"}`);
   }
 }
+if (macos) {
+  for (const paper of ["a4", "letter"]) {
+    const file = join(out, `quartic-macos-${paper}.pdf`);
+    const { stdout } = await promisify(execFile)("swift", [join(here, "print-macos.swift"), url, file, paper], { timeout: 300_000 });
+    process.stdout.write(`macOS ${paper}: ${stdout}`);
+    await checkPdf(file, `macOS ${paper === "a4" ? "A4" : "Letter"}`);
+  }
+}
 await server.close();
 
 /** Reads a PDF's pages: their text, top to bottom, and how many pictures each draws. */
@@ -165,7 +177,7 @@ async function checkPdf(file, name) {
   check(missing === 0, `${name}: ${missing} of ${expected.lean.length} Lean lines missing`);
   const pageOf = (phrase) => pages.findIndex((p) => squash(p.text).includes(squash(phrase)));
   check(pageOf("import Mathlib") >= 0 && pageOf("end Quartic") > pageOf("import Mathlib"), `${name}: the Lean file doesn't continue across pages`);
-  check(pageOf("This is the last paragraph") === pages.length - 1, `${name}: the last paragraph isn't on the last page`);
+  check(pageOf("END_OF_DOCUMENT_EXPORT_TEST") === pages.length - 1, `${name}: the end-of-document marker isn't on the last page`);
   check(pages.reduce((n, p) => n + p.images, 0) >= 2, `${name}: ${pages.reduce((n, p) => n + p.images, 0)} pictures, expected the 2 graphs`);
   // The page area ends about 92% of the way down. A short block kept whole may leave a quarter of
   // a page; a figure kept whole, more.

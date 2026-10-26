@@ -54,6 +54,29 @@ jobs:
           path: app/e2e/out/*.pdf
           if-no-files-found: ignore
 
+  # The same check on a Mac, printing through WKWebView's print operation as Theoremis does there.
+  app-print-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run test:print -- --macos
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: printed-pdfs-macos
+          path: app/e2e/out/*.pdf
+          if-no-files-found: ignore
+
   app-backend:
     runs-on: ubuntu-latest
     defaults:

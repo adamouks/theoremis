@@ -178,6 +178,9 @@ theorem m_neg_iff (a : ℝ) : m a < 0 ↔ 1 < a := by
 
 end Quartic`.replace(/\\`/g, "`");
 
+/** The document's last block, a marker a complete print ends with. */
+export const QUARTIC_END = "END_OF_DOCUMENT_EXPORT_TEST";
+
 let n = 0;
 const block = (source: string, extra: Partial<Block> = {}): Block => ({ id: `q${++n}`, source, ...extra });
 
@@ -237,6 +240,8 @@ export function quarticDocument(): Doc {
       "The criterion $a \\le 1$ is the quartic case of a general principle: an even polynomial in $x$ that is a quadratic in $x^2$ is nonnegative on $\\mathbb{R}$ exactly when that quadratic is nonnegative on $[0, \\infty)$. It would be interesting to extend the formalization to the two-parameter family $x^4 - 2ax^2 + b$.",
     ),
     block("This is the last paragraph of the document, after the Lean formalization. If it is missing from a printed copy, the print is incomplete."),
+    // The very end, for a check to find in the PDF: everything before it printed too.
+    block(QUARTIC_END),
   ];
   return {
     id: "quartic",
@@ -285,4 +290,5 @@ export const QUARTIC_PHRASES = [
   "4 Discussion",
   "is the quartic case of a general principle",
   "This is the last paragraph of the document",
+  QUARTIC_END,
 ];
