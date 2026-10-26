@@ -17,14 +17,18 @@ guard arguments.count >= 4, let url = URL(string: arguments[1]) else {
   FileHandle.standardError.write("usage: swift print-macos.swift URL OUT.pdf a4|letter\n".data(using: .utf8)!)
   exit(2)
 }
-let out = URL(fileURLWithPath: arguments[2])
-let paper = arguments[3]
 
 final class Printer: NSObject {
+  let url: URL
+  let out: URL
+  let paper: String
   let window: NSWindow
   let webView: WKWebView
 
-  override init() {
+  init(url: URL, out: URL, paper: String) {
+    self.url = url
+    self.out = out
+    self.paper = paper
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 900), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
     webView = WKWebView(frame: window.contentView!.bounds, configuration: WKWebViewConfiguration())
     super.init()
@@ -79,7 +83,7 @@ final class Printer: NSObject {
   }
 
   @objc func printOperationDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
-    guard success, let pdf = PDFDocument(url: out) else {
+    guard success, let pdf = PDFDocument(url: self.out) else {
       print("printing failed")
       exit(1)
     }
@@ -91,7 +95,7 @@ final class Printer: NSObject {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let printer = Printer()
+let printer = Printer(url: url, out: URL(fileURLWithPath: arguments[2]), paper: arguments[3])
 printer.start()
 Timer.scheduledTimer(withTimeInterval: 150, repeats: false) { _ in
   print("timed out")
