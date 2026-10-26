@@ -5134,10 +5134,245 @@ a:hover {
   color: var(--text-4);
 }
 
-/* Print and Save as PDF (components/PrintDocument.tsx) ----------------------- */
+/* Print and Save as PDF (components/PrintDocument.tsx, lib/printLayout.ts) ------ */
 
+/* The printed copy. Hidden on screen, except while it is laid out off screen at the paper's
+   width to be fitted to the page; shown alone in print. Its styles apply in both, so what is
+   measured is what prints. Nothing in it clips or scrolls: on paper there is no scrolling, and a
+   clipped box would lose what it hides. */
 .print-root {
   display: none;
+  /* The page's colours, for black on white. */
+  --paper: #111;
+  --paper-strong: #000;
+  --paper-2: #333;
+  --paper-3: #555;
+  color: #111;
+  background: #fff;
+  /* Some engines write ligatures into the PDF without the letters they stand for (WebKitGTK's
+     "fi", "ft" and "Th"), so a saved PDF couldn't be searched or copied from. */
+  font-variant-ligatures: no-common-ligatures;
+}
+
+.print-root.is-measuring {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 170mm;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The width of A4 less its margins, the narrower of A4 and US Letter. */
+.print-doc {
+  width: 100%;
+  max-width: 170mm;
+  margin: 0 auto;
+  font-family: var(--serif);
+}
+
+.print-doc__head {
+  margin-bottom: 1.6em;
+}
+
+.print-doc__title {
+  margin: 0 0 0.3em;
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.print-doc__author {
+  margin: 0 0 1.2em;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.print-doc__abstract {
+  margin: 0 2.5em;
+}
+
+.print-doc__abstract .markdown--doc {
+  font-size: 14px;
+}
+
+.print-doc__block + .print-doc__block,
+.print-doc__block + .print-doc__group,
+.print-doc__group + .print-doc__block,
+.print-doc__group + .print-doc__group {
+  margin-top: 0.7em;
+}
+
+.print-root .markdown--doc {
+  font-size: 15px;
+  color: #111;
+}
+
+.print-root a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Pages: blocks flow from page to page like a paper's paragraphs. Short blocks, a heading with a
+   short block after it, figures and equations are kept whole (lib/printLayout.ts marks which);
+   nothing taller is, so a long proof or Lean file continues on the next page. */
+.print-doc__keep {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-doc__block--heading,
+.print-root .markdown :is(h1, h2, h3, h4, h5, h6) {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.print-root .markdown :is(p, li, blockquote, pre) {
+  orphans: 3;
+  widows: 3;
+}
+
+.print-root :is(.figure, .katex-display, tr) {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Displayed equations: never clipped. One too wide for the column is shrunk a little, has its
+   number set under it, or is broken at its relations and operators (lib/printLayout.ts). */
+.print-root .markdown .katex-display {
+  overflow: visible;
+  padding: 3px 0;
+}
+
+.print-root .markdown .katex-display > .katex {
+  font-size: calc(1.1em * var(--fit, 1));
+}
+
+.print-root .katex-display.is-tag-below > .katex > .katex-html > :is(.katex-tag, .tag) {
+  position: static;
+  display: block;
+  margin-top: 0.2em;
+  text-align: right;
+}
+
+.print-root .katex-display.is-wrapped > .katex {
+  white-space: normal;
+}
+
+/* Code: wrapped rather than scrolled, and free to continue across pages. */
+.print-root .markdown code,
+.print-root .markdown pre,
+.print-root .code-block,
+.print-root .print-code {
+  background: none !important;
+  box-shadow: none !important;
+  color: #111 !important;
+}
+
+.print-root .code-block,
+.print-root .print-code {
+  overflow: visible;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+}
+
+.print-root .code-block__bar {
+  display: none;
+}
+
+.print-root .markdown pre,
+.print-root .markdown pre code,
+.print-root .print-code {
+  overflow: visible;
+  max-height: none;
+  border: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.print-root .code-block pre,
+.print-root .print-code {
+  margin: 0;
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.print-root .hljs,
+.print-root .hljs * {
+  color: #111 !important;
+}
+
+.print-root .table-scroll {
+  overflow: visible;
+}
+
+.print-root th {
+  background: none !important;
+}
+
+.print-root th,
+.print-root td {
+  border-color: #999 !important;
+  overflow-wrap: anywhere;
+}
+
+/* Figures fit on a page; graphs fill the column, with a key under them. */
+.print-root .figure img {
+  max-width: 100%;
+  max-height: 180mm;
+  width: auto;
+  height: auto;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.print-root .figure--graph img {
+  width: 100%;
+  max-height: none;
+}
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #333;
+}
+
+.graph-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.graph-legend__swatch {
+  width: 18px;
+  height: 0;
+  border-top: 2.5px solid currentColor;
+}
+
+.graph-legend__swatch.is-dashed {
+  border-top-style: dashed;
+}
+
+.graph-legend .katex {
+  font-size: 1.08em;
+  color: #111;
+}
+
+.graph-legend__value {
+  color: #555;
 }
 
 @media print {
@@ -5161,119 +5396,12 @@ a:hover {
     display: none !important;
   }
 
-  .print-root {
+  .print-root,
+  .print-root.is-measuring {
     display: block;
-    /* The page's colours, for black on white. */
-    --paper: #111;
-    --paper-strong: #000;
-    --paper-2: #333;
-    color: #111;
-  }
-
-  .print-doc {
-    max-width: 40em;
-    margin: 0 auto;
-    font-family: var(--serif);
-  }
-
-  .print-doc__title {
-    margin: 0 0 0.3em;
-    font-family: var(--serif);
-    font-size: 26px;
-    font-weight: 500;
-    line-height: 1.25;
-    text-align: center;
-  }
-
-  .print-doc__author {
-    margin: 0 0 1.6em;
-    font-size: 14px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    text-align: center;
-  }
-
-  .print-doc__abstract {
-    margin: 0 2.5em 1.8em;
-  }
-
-  .print-doc__abstract .markdown--doc {
-    font-size: 14px;
-  }
-
-  .print-doc__block {
-    break-inside: avoid-page;
-  }
-
-  .print-doc__block + .print-doc__block {
-    margin-top: 0.7em;
-  }
-
-  .print-root .markdown--doc {
-    font-size: 15px;
-    color: #111;
-  }
-
-  .print-root a {
-    color: inherit;
-    text-decoration: underline;
-  }
-
-  .print-root .markdown code,
-  .print-root .markdown pre,
-  .print-root .code-block,
-  .print-root .print-code {
-    background: none !important;
-    box-shadow: none !important;
-    color: #111 !important;
-  }
-
-  .print-root .code-block,
-  .print-root .print-code {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-  }
-
-  .print-root .markdown pre,
-  .print-root .markdown pre code {
-    border: none;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .print-root .code-block__bar {
-    display: none;
-  }
-
-  .print-root .print-code {
-    padding: 8px 10px;
-    font-family: var(--mono);
-    font-size: 11px;
-    white-space: pre-wrap;
-  }
-
-  .print-root .hljs,
-  .print-root .hljs * {
-    color: #111 !important;
-  }
-
-  .print-root th {
-    background: none !important;
-  }
-
-  .print-root th,
-  .print-root td {
-    border-color: #999 !important;
-  }
-
-  .print-root .figure img {
-    box-shadow: none;
-    border-radius: 0;
-  }
-
-  .print-root .figure--graph img {
-    width: 100%;
-    max-height: none;
+    position: static;
+    width: auto;
+    visibility: visible;
   }
 }
 
@@ -5506,27 +5634,25 @@ a:hover {
   margin-left: auto;
 }
 
-@media print {
-  .print-root .citation {
-    color: inherit;
-  }
+.print-root .citation {
+  color: inherit;
+}
 
-  .print-doc__references {
-    margin-top: 1.6em;
-  }
+.print-doc__references {
+  margin-top: 1.6em;
+}
 
-  .print-doc__references h2 {
-    margin: 0 0 0.6em;
-    font-size: 16px;
-    font-weight: 500;
-    text-align: center;
-  }
+.print-doc__references h2 {
+  margin: 0 0 0.6em;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+}
 
-  .print-doc__references li .markdown--doc,
-  .print-doc__references .doc-references__number {
-    font-size: 13px;
-    color: #111;
-  }
+.print-doc__references li .markdown--doc,
+.print-doc__references .doc-references__number {
+  font-size: 13px;
+  color: #111;
 }
 
 /* A document's earlier versions (components/HistoryDialog.tsx). */

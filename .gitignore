@@ -24,3 +24,6 @@ app/public/pdfjs
 *.njsproj
 *.sln
 *.sw?
+
+# Print checks (app/e2e/print-check.mjs)
+app/e2e/out/

@@ -1,5 +1,5 @@
-import { createContext, memo, useContext, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import type { KatexOptions } from "katex";
+import { createContext, memo, useContext, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import katex, { type KatexOptions } from "katex";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -8,7 +8,7 @@ import remarkMath from "remark-math";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { assetUrl } from "../lib/api";
 import { GraphBlock } from "./graph/GraphBlock";
-import { graphPicture } from "./graph/graphPicture";
+import { graphKey, type GraphPicture } from "./graph/graphPicture";
 import { citationLinkKeys, linkCitations } from "../lib/citations";
 import { normalizeMath, unnumberEnvironments } from "../lib/text";
 import { Check, Copy } from "./Icons";
@@ -108,32 +108,69 @@ function Figure({ src, alt, title }: { src?: string; alt?: string; title?: strin
 }
 
 /**
+ * The pictures of graphs a printed document shows. A graph that has none yet asks for one, and
+ * shows nothing until it's drawn; `null` means it couldn't be drawn.
+ */
+export interface PrintPictures {
+  get: (key: string) => GraphPicture | null | undefined;
+  request: (key: string, code: string, dim: 2 | 3) => void;
+}
+
+/**
  * How graph blocks inside this Markdown behave: in a document they can be edited, and edits
- * replace their code in the block's source. Elsewhere (replies, notes) they are read-only.
+ * replace their code in the block's source. Elsewhere (replies, notes) they are read-only. In
+ * print they are pictures on paper.
  */
 export const GraphContext = createContext<{
   editable: boolean;
   compact: boolean;
   onChange?: (before: string, after: string) => void;
-  /** For print: a picture of the graph on paper, not the interactive graph. */
-  print?: boolean;
+  print?: PrintPictures;
 }>({
   editable: false,
   compact: true,
 });
 
+const legendMath = (latex: string) => katex.renderToString(latex, { throwOnError: false, strict: "ignore", output: "html" });
+
+/** A graph as it prints: its picture, with a key to what's drawn and the sliders' values. */
+function PrintedGraph({ code, dim, pictures }: { code: string; dim: 2 | 3; pictures: PrintPictures }) {
+  const key = graphKey(dim, code);
+  const picture = pictures.get(key);
+  useEffect(() => {
+    if (picture === undefined) pictures.request(key, code, dim);
+  }, [picture, pictures, key, code, dim]);
+  if (picture === undefined) return <span className="figure figure--graph" data-graph-pending="" />;
+  if (!picture)
+    return (
+      <span className="figure figure--graph">
+        <pre className="print-code">{code}</pre>
+        <span className="figure__caption">{dim === 3 ? "This 3D graph couldn’t be drawn here, as it needs WebGL; its code is shown instead." : "This graph couldn’t be drawn; its code is shown instead."}</span>
+      </span>
+    );
+  return (
+    <span className="figure figure--graph">
+      <img src={picture.src} width={picture.width} height={picture.height} alt="" />
+      {(picture.legend.length > 0 || picture.values.length > 0) && (
+        <span className="graph-legend">
+          {picture.legend.map((entry, i) => (
+            <span key={i} className="graph-legend__item">
+              <span className={`graph-legend__swatch${entry.dashed ? " is-dashed" : ""}`} style={{ color: entry.color }} />
+              {entry.label ? <span>{entry.label}</span> : <span dangerouslySetInnerHTML={{ __html: legendMath(entry.latex) }} />}
+            </span>
+          ))}
+          {picture.values.map((value) => (
+            <span key={value} className="graph-legend__value" dangerouslySetInnerHTML={{ __html: legendMath(value) }} />
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function GraphFence({ language, code }: { language: "graph" | "graph3d"; code: string }) {
   const { editable, compact, onChange, print } = useContext(GraphContext);
-  if (print) {
-    const picture = graphPicture(code, language === "graph3d" ? 3 : 2);
-    return picture ? (
-      <span className="figure figure--graph">
-        <img src={picture} alt="" />
-      </span>
-    ) : (
-      <pre className="print-code">{code}</pre>
-    );
-  }
+  if (print) return <PrintedGraph code={code} dim={language === "graph3d" ? 3 : 2} pictures={print} />;
   return (
     <GraphBlock
       code={code}

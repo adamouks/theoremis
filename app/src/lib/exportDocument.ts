@@ -12,14 +12,16 @@ const GRAPH_FENCE = /```(graph3d|graph)[ \t]*\n([\s\S]*?)\n```/g;
 
 /** Exports `doc` as LaTeX. Resolves to where it was saved, or null if the person cancelled. */
 export async function exportLatex(doc: Doc, author: string): Promise<string | null> {
-  // Graphs are pictured first, so a graph that can't be is kept as its code instead.
+  // Graphs are pictured first, so a graph that can't be is kept as its code instead. Their
+  // numbers are drawn into the pictures, so the fonts must be ready.
+  await document.fonts?.ready;
   const pictures = new Map<string, string>();
   for (const block of doc.blocks) {
     if (block.suggestion) continue;
     for (const [, language, code] of block.source.matchAll(GRAPH_FENCE)) {
       const dim = language === "graph3d" ? 3 : 2;
-      const picture = graphPicture(code, dim);
-      if (picture) pictures.set(`${dim}:${code}`, picture);
+      const picture = await graphPicture(code, dim);
+      if (picture) pictures.set(`${dim}:${code}`, picture.src);
     }
   }
   const bibliography = doc.bibliography?.trim() ?? "";

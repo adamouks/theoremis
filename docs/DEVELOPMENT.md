@@ -219,8 +219,13 @@ The static site is hosted on Vercel. The repository's `vercel.json` builds `site
 
 ```sh
 cd app && npm run typecheck && npm test
+cd app && npm run test:print        # prints a long test document to PDF and checks every page
 cd app/src-tauri && cargo clippy --all-targets && cargo test
 cd site && npm run build
 ```
+
+`npm run test:print` needs Chromium for Playwright (`npx playwright install chromium`). Add `-- --webkit` to print with WebKitGTK as well, the engine Tauri uses on Linux; that needs `python3-gi`, `gir1.2-webkit2-4.1` and `xvfb-run`, and `PYTHON=` names the interpreter when the default `python3` lacks the GTK bindings. The PDFs land in `app/e2e/out/` to look at.
+
+To check printing in the desktop app itself, especially on macOS, whose WebKit isn't in CI: open a long document with graphs and a Lean block (or ask Auto mode for one), choose **Print or save as PDF…** (⌘P), and in the dialog's preview check that the last page holds the document's last paragraph, that the Lean code continues across pages, that no equation runs into the margin or under its number, and that both graphs show. Save it as a PDF and check the same in the file; change the paper size in the dialog and check again.
 
 CI runs the application and site checks on pushes. See `.github/workflows/ci.yml` and `.github/workflows/release.yml` for their source definitions.

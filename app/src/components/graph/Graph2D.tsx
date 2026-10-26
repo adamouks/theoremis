@@ -20,8 +20,6 @@ export interface GraphHandle {
   reset: () => void;
   /** Turns the view continuously (3D graphs). */
   rotate?: () => void;
-  /** The graph as a PNG data URL on a white background, as now shown (3D graphs). */
-  capture?: () => string | null;
 }
 
 interface Props {
@@ -41,6 +39,8 @@ export interface PlaneTheme {
   axis: string;
   label: string;
   pointLabel: string;
+  /** The size of the numbers along the axes, in pixels; labels of points are a pixel larger. */
+  font: number;
   /** An item's colour on this background. */
   color: (color: string) => string;
 }
@@ -52,6 +52,7 @@ const DARK: PlaneTheme = {
   axis: "rgba(236,237,242,0.55)",
   label: "rgba(200,202,212,0.75)",
   pointLabel: "rgba(236,237,242,0.9)",
+  font: 11,
   color: (c) => c,
 };
 
@@ -74,6 +75,8 @@ export const PAPER: PlaneTheme = {
   axis: "rgba(20,20,28,0.7)",
   label: "rgba(40,40,52,0.85)",
   pointLabel: "rgba(20,20,28,0.95)",
+  // On paper the picture is printed at its own size, so the numbers are set a little larger.
+  font: 12,
   color: (c) => ON_PAPER[c.toLowerCase()] ?? c,
 };
 
@@ -369,7 +372,7 @@ export function drawPlane(ctx: CanvasRenderingContext2D, spec: GraphSpec, scope:
     ctx.stroke();
     // Tick labels along the axes, or along the edge when an axis is off screen.
     ctx.fillStyle = theme.label;
-    ctx.font = "11px 'Geist Variable', 'Geist', system-ui, sans-serif";
+    ctx.font = `${theme.font}px 'Geist Variable', 'Geist', system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const labelY = Math.min(height - 14, Math.max(3, ay + 4));
@@ -457,7 +460,7 @@ export function drawPlane(ctx: CanvasRenderingContext2D, spec: GraphSpec, scope:
         ctx.fill();
         if (item.style.label) {
           ctx.fillStyle = theme.pointLabel;
-          ctx.font = "12px 'Geist Variable', system-ui, sans-serif";
+          ctx.font = `${theme.font + 1}px 'Geist Variable', system-ui, sans-serif`;
           ctx.textAlign = "left";
           ctx.textBaseline = "bottom";
           ctx.fillText(item.style.label, sx(x) + 7, sy(y) - 4);

@@ -10,7 +10,7 @@ import { Close } from "./components/Icons";
 import { MediaContext, NotationContext, type Notation } from "./components/Markdown";
 import { NotationDialog } from "./components/NotationDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
-import { PrintDocument } from "./components/PrintDocument";
+import { PrintDocument, type PrintJob } from "./components/PrintDocument";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { SourceViewer } from "./components/SourceViewer";
@@ -433,30 +433,32 @@ export default function App() {
       setNotice({ text: `Couldn’t export: ${errorMessage(err)}`, error: true });
     }
   }, [doc, settings?.displayName]);
-  /** The document being printed. It stays in the page until printing ends, as the dialog reads it late. */
-  const [printing, setPrinting] = useState<string | null>(null);
+  /**
+   * What's being printed: a copy of the document as it was when printing was asked for. It stays
+   * in the page, unchanged, until the next print or until another document opens, because print
+   * dialogs read the page while they're open, and some (macOS) read it again later, after
+   * `afterprint`. The dialog opens once the copy is ready (PrintDocument).
+   */
+  const [printJob, setPrintJob] = useState<PrintJob | null>(null);
+  const printReady = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (!printing) return;
-    const done = () => setPrinting(null);
-    window.addEventListener("afterprint", done);
-    const id = window.setTimeout(done, 10 * 60_000);
-    return () => {
-      window.removeEventListener("afterprint", done);
-      window.clearTimeout(id);
-    };
-  }, [printing]);
+    if (printJob && printJob.doc.id !== doc?.id) setPrintJob(null);
+  }, [doc?.id, printJob]);
   const printDoc = useCallback(async () => {
     if (!doc) return;
-    setPrinting(doc.id);
-    // Let the print layout render, and its figures load, before the dialog reads the page.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    await Promise.all([...document.querySelectorAll<HTMLImageElement>(".print-root img")].map((img) => img.decode().catch(() => {})));
+    const ready = new Promise<void>((resolve) => (printReady.current = resolve));
+    setPrintJob({ id: Date.now(), doc, numbered, author: settings?.displayName ?? "", references });
+    await ready;
     try {
       await api.printPage();
     } catch (err) {
       setNotice({ text: `Couldn’t print: ${errorMessage(err)}`, error: true });
     }
-  }, [doc]);
+  }, [doc, numbered, references, settings?.displayName]);
+  const onPrintReady = useCallback(() => {
+    printReady.current?.();
+    printReady.current = null;
+  }, []);
 
   // Global shortcuts.
   useEffect(() => {
@@ -841,7 +843,7 @@ export default function App() {
           }}
         />
       )}
-      {doc && printing === doc.id && <PrintDocument doc={doc} numbered={numbered} author={settings?.displayName ?? ""} references={references} />}
+      {printJob && <PrintDocument key={printJob.id} job={printJob} onReady={onPrintReady} />}
       {doc && historyOpen && <HistoryDialog doc={doc} onRestore={restoreVersion} onClose={() => setHistoryOpen(false)} />}
       {doc && notationOpen && (
         <NotationDialog

@@ -432,9 +432,11 @@ GFM and math):
 - Display equations are numbered by LaTeX exactly where `numberEquations` numbers them
   (`displayMath`), so LaTeX's counter gives the same sequence and "(3)" in the prose still
   points at (3).
-- Graphs become PNGs: a 2D graph is drawn afresh in paper colours (`drawPlane` with `PAPER`),
-  a 3D graph is taken from its block on screen, rendered once on white (`offerPicture`).
-  Figures are copied, converted to PNG when pdfLaTeX can't include their format.
+- Graphs become PNGs drawn afresh from their code for paper (`graphPicture`): a 2D graph with
+  `drawPlane` in `PAPER` colours, a 3D graph by `picture3d`, which builds the same scene as the
+  graph on screen (`scene3d.ts`) offscreen on white, frames it to fill the picture and draws the
+  axes' names and numbers into it. Neither depends on the graph on screen, which may never have
+  been drawn. Figures are copied, converted to PNG when pdfLaTeX can't include their format.
 - Unicode pdfLaTeX doesn't know (Lean's ℕ, ∑, ∈, Greek, arrows) is declared with
   `\DeclareUnicodeCharacter`; macros KaTeX has but LaTeX doesn't get `\providecommand`s after
   the document's own; packages are added for what the source uses; statuses stay as comments.
@@ -444,11 +446,32 @@ With figures or references, the export is a ZIP (`lib/zip.ts`, written in the br
 saved through `save_file`, which runs the save dialog in Rust (`tauri-plugin-dialog`) and writes
 where the person chose, so the interface never names a path.
 
-**Print and PDF.** `PrintDocument` renders the document into the page for print only: black on
-white, the title, author and summary, numbered equations, graphs pictured in paper colours, and
-the references. `print_page` opens the system print dialog through the webview (wry prints on
-all three platforms), whose Save as PDF makes the PDF. It stays mounted until printing ends,
-since the dialog reads the page late.
+**Print and PDF.** Printing makes a copy of the document as it is (`PrintJob`: the blocks, their
+equation numbers, the author and the references) and `PrintDocument` renders it into the page:
+black on white, the title, author and summary, every block but pending suggestions, graphs as
+paper pictures with a key, and the references. `print_page` then opens the system print dialog
+through the webview (wry prints on all three platforms), whose Save as PDF makes the PDF.
+
+- **The copy is ready before the dialog opens.** It is first laid out off screen at the
+  paper's width (170 mm, A4's text width, the narrower of A4 and Letter), each graph asks for
+  its picture and gets it (`graphPicture`, after the fonts load), images are decoded, and then
+  `lib/printLayout.ts` fits it to the page. Only then does `print_page` run.
+- **The copy stays.** It is left in the page unchanged until the next print or until another
+  document opens, never taken down on `afterprint`: dialogs read the page while they're open,
+  and macOS's preview reads it again later. Being a snapshot, it doesn't change under the
+  dialog when the document reloads from disk or a run edits it.
+- **Pages.** Blocks flow from page to page like a paper's paragraphs, with at least three lines
+  of a paragraph or of code at the foot or head of a page. Only short things are kept whole: a
+  block shorter than a quarter of a page, a heading with a short block after it (a heading is
+  always kept with what follows), a figure, an equation. So a long proof or a Lean file runs on
+  across pages, and moving something to the next page never leaves much of a page empty.
+- **Equations.** Nothing in the copy scrolls or clips. A displayed equation too wide for the
+  column is shrunk a little (to 80%), or has its number set on its own line under it, or is
+  broken at its top-level relations and operators as inline math is, or as a last resort
+  shrunk until it fits (`planEquation`); its number never overlaps it.
+- **Code** wraps at the column and continues across pages.
+- **Text stays text.** Common ligatures are off in the copy: WebKitGTK writes "fi" and "Th"
+  into PDFs without the letters they stand for, which would make a saved PDF unsearchable.
 
 ## Working with co-authors
 
@@ -682,6 +705,14 @@ as production.
   exports and print, macros and references, version history, "Is it known?", and
   co-authors (a shared file, a conflict kept both ways, a change picked up from elsewhere),
   without a model or a desktop window.
+- **Print** is checked end to end by `e2e/print-check.mjs` (`npm run test:print`, in CI):
+  a long document heavy with theorems, piecewise and wide numbered equations, a 2D and a 3D
+  graph and a 170-line Lean file with prose after it (`lib/fixtures/quartic.ts`) is printed to
+  PDF on A4 and Letter in Chromium and WebKitGTK, and every page is read back: every block once
+  and in order, every Lean line, the Lean file across pages, the prose after it, both graphs,
+  no equation outside the column or under its number, nothing clipped, no page left mostly
+  empty. The PDFs are kept as a CI artifact. macOS's WKWebView isn't in CI; WebKitGTK shares
+  its layout engine.
 
 ## Where to make a change
 
@@ -693,6 +724,8 @@ as production.
 | Change the collaborator's effects or their colours | The wrappers in `components/ai/effects.tsx`. Leave `src/vendor/` as upstream wrote it, and list any change in `src/vendor/README.md` |
 | Change how a seminar is convened, or how many members and rounds it may take | `CHAIR` and `membership` in `lib/prompts.ts`; `CONVENE`, `MAX_MEMBERS`, `MEMBER_ROUNDS` and `concurrency` in `lib/seminar.ts` |
 | Change the LaTeX export | `documentToLatex` in `lib/latexExport.ts` (pure, with tests); the files around it in `lib/exportDocument.ts` |
+| Change how documents print | `PrintDocument.tsx` (what prints and when it's ready), `lib/printLayout.ts` (pages and equations, with tests), the print rules in `styles.css`; run `npm run test:print` |
+| Change how a graph looks on paper | `graphPicture.ts` and `PAPER` in `Graph2D.tsx`; `picture3d.ts` and `scene3d.ts` for 3D |
 | Change how references are shown or numbered | `formatEntry`, `sentenceCase` and `citationNumbers` in `lib/bibtex.ts`, together with the export's `\bibliographystyle` |
 | Search another source for "Is it known?" | A function beside `search_arxiv` and `search_crossref` in `references.rs`, joined in `search` |
 | Change how often versions are kept, or how many | `VERSION_EVERY_MS` and `MAX_VERSIONS` in `storage.rs` |
