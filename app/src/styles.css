@@ -5376,6 +5376,8 @@ a:hover {
 }
 
 @media print {
+  /* The same margins are in the print settings (src-tauri/src/print.rs): WebKit, on macOS and
+     Linux, measures the printed page by those before it applies these rules. */
   @page {
     margin: 22mm 20mm;
   }

@@ -33,8 +33,13 @@ def print_page():
     settings.set(Gtk.PRINT_SETTINGS_OUTPUT_URI, "file://" + out)
     settings.set(Gtk.PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "pdf")
     operation.set_print_settings(settings)
+    # As Theoremis prints on Linux (src-tauri/src/print.rs): the page's margins in the page setup.
     setup = Gtk.PageSetup()
     setup.set_paper_size(Gtk.PaperSize.new(Gtk.PAPER_NAME_A4 if paper == "a4" else Gtk.PAPER_NAME_LETTER))
+    setup.set_top_margin(22, Gtk.Unit.MM)
+    setup.set_bottom_margin(22, Gtk.Unit.MM)
+    setup.set_left_margin(20, Gtk.Unit.MM)
+    setup.set_right_margin(20, Gtk.Unit.MM)
     operation.set_page_setup(setup)
     operation.connect("finished", lambda *_: finish(0))
     operation.connect("failed", lambda _op, error: (print("print failed:", error, file=sys.stderr), finish(1)))

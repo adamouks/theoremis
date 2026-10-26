@@ -35,6 +35,15 @@ getrandom = "0.3"
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 tauri-plugin-dialog = "2"
 
+# Printing with the page's margins (src/print.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSWindow"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+webkit2gtk = "2"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util"] }
 tempfile = "3"

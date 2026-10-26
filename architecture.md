@@ -450,7 +450,17 @@ where the person chose, so the interface never names a path.
 equation numbers, the author and the references) and `PrintDocument` renders it into the page:
 black on white, the title, author and summary, every block but pending suggestions, graphs as
 paper pictures with a key, and the references. `print_page` then opens the system print dialog
-through the webview (wry prints on all three platforms), whose Save as PDF makes the PDF.
+for the webview (`src-tauri/src/print.rs`), whose Save as PDF makes the PDF.
+
+- **The margins are in the print settings too.** On macOS and Linux, `print_page` gives the
+  page's margins (22 mm, 20 mm at the sides, as `@page` in `styles.css`) to the print settings
+  itself rather than letting wry print with none. WebKit measures the printed page from the
+  print settings before it applies the print rules, where `@page` is, and measures it again
+  later with them; with no margins in the settings the two measures differed. macOS then
+  counted the pages at the first, larger size and printed only that many of the second, smaller
+  ones, so a long document lost its last pages (or, printed without the dialog, came out shrunk
+  and off-centre); Linux drew pages to the paper's narrow margins. Windows' engine reads `@page`,
+  and wry prints there.
 
 - **The copy is ready before the dialog opens.** It is first laid out off screen at the
   paper's width (170 mm, A4's text width, the narrower of A4 and Letter), each graph asks for

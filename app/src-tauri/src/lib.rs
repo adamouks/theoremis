@@ -1,6 +1,7 @@
 mod chatgpt;
 mod error;
 mod lean;
+mod print;
 mod providers;
 mod references;
 mod settings;
@@ -473,7 +474,7 @@ async fn search_literature(
 /// Opens the system's print dialog for the page, which can also save it as a PDF.
 #[tauri::command]
 fn print_page(webview: tauri::Webview) -> AppResult<()> {
-    Ok(webview.print()?)
+    Ok(print::print(&webview)?)
 }
 
 /// Serves `theoremis://localhost/<document id>/<file>` (on Windows,

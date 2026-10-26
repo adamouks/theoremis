@@ -1,7 +1,7 @@
-// Prints a page to PDF with macOS's WebKit, the way Theoremis prints on a Mac: through
-// WKWebView.printOperation(with:) on the shared print info with zero margins, run modally for the
-// window and allowed its own thread, as wry (Tauri) does (wry's wkwebview print_with_options). It
-// saves to a file instead of showing the dialog. Used by print-check.mjs --macos, which compiles it.
+// Prints a page to PDF with macOS's WebKit, the way Theoremis prints on a Mac (src-tauri/src/
+// print.rs): through WKWebView.printOperation(with:) on the shared print info with the page's
+// margins, run modally for the window and allowed its own thread. It saves to a file instead of
+// showing the dialog. Used by print-check.mjs --macos, which compiles it.
 //
 //   swiftc print-macos.swift -o print-macos && ./print-macos URL OUT.pdf a4|letter
 //
@@ -49,12 +49,13 @@ final class Printer: NSObject {
   }
 
   func printPage() {
-    // As wry does: the shared print info, its margins set to the defaults (zero).
+    // As Theoremis does: the shared print info, with the page's margins (22mm, and 20mm at the sides).
     let info = NSPrintInfo.shared
-    info.topMargin = 0
-    info.rightMargin = 0
-    info.bottomMargin = 0
-    info.leftMargin = 0
+    let mm = 72.0 / 25.4
+    info.topMargin = 22 * mm
+    info.rightMargin = 20 * mm
+    info.bottomMargin = 22 * mm
+    info.leftMargin = 20 * mm
     info.paperSize = paper == "a4" ? NSSize(width: 595.28, height: 841.89) : NSSize(width: 612, height: 792)
     info.jobDisposition = .save
     info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = out
