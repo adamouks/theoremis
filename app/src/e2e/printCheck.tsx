@@ -14,7 +14,11 @@ import { numberBlocks } from "../lib/doc";
 import { QUARTIC_LEAN, QUARTIC_PHRASES, quarticDocument } from "../lib/fixtures/quartic";
 import { printedBlocks } from "../lib/printLayout";
 
-const doc = quarticDocument();
+// ?blocks=N prints only the first N blocks: a shorter document, for checking that one print doesn't
+// limit the next.
+const full = quarticDocument();
+const limit = Number(new URLSearchParams(location.search).get("blocks")) || full.blocks.length;
+const doc = { ...full, blocks: full.blocks.slice(0, limit) };
 const numbered = numberBlocks(doc.blocks);
 
 (window as unknown as { __printCheck: unknown }).__printCheck = {
