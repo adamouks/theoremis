@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzMTkxODg5RkNFQTZFOTEKUldTUmJ1cjhpUmdaazNjUit1RlkzTVVTNFBIVVRLQ2U0c0dpVXd3OUk4OUZYU3RvRWVaR0lCUzYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA1OEEzMDA4NTZBOTU1QjEKUldTeFZhbFdDRENLQlY1WjFmRHd0cU1NcEw3MHFBSW4zNm5vRW1YWnU2MzdsWWUvbTRnZEJpSDIK",
       "endpoints": [
         "https://github.com/adamouks/theoremis/releases/latest/download/latest.json"
       ],
