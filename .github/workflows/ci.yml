@@ -76,9 +76,12 @@ jobs:
           npx vite --port 14300 --strictPort > /tmp/vite.log 2>&1 &
           sleep 6
           URL=http://localhost:14300/e2e/print.html
-          swift e2e/print-macos.swift "$URL" "$PWD/e2e/out/exp-plain.pdf" letter || true
-          swift e2e/print-macos.swift "$URL" "$PWD/e2e/out/exp-lastpage.pdf" letter --last-page 5 || true
-          swift e2e/print-macos.swift "$URL" "$PWD/e2e/out/exp-after.pdf" letter --after "$URL?blocks=9" || true
+          mkdir -p e2e/out
+          swift e2e/print-macos-panel.swift "$URL" "$PWD/e2e/out/exp-panel-a4.pdf" a4 panel || true
+          swift e2e/print-macos-panel.swift "$URL" "$PWD/e2e/out/exp-preview-a4.pdf" a4 preview || true
+          swift e2e/print-macos.swift "$URL" "$PWD/e2e/out/exp-plain-a4.pdf" a4 || true
+          echo "--- WebKit printing log"
+          log show --last 15m --info --debug --style compact --predicate 'category == "Printing"' | tail -n 400 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
