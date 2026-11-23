@@ -1,0 +1,234 @@
+pub mod lines;
+pub mod ollama;
+#[cfg(test)]
+pub mod test_server;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Provider {
+    Ollama,
+    /// The person's ChatGPT plan, via Sign in with ChatGPT. Older settings call it `openai`.
+    #[serde(alias = "openai")]
+    Chatgpt,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    System,
+    #[default]
+    User,
+    Assistant,
+    /// The result of a tool the assistant called, answering `tool_call_id`.
+    Tool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessage {
+    pub role: Role,
+    pub content: String,
+    /// Images the message shows the model, as `data:image/…;base64,…` URLs: pages of an
+    /// imported paper, a photo of handwritten notes, an attached figure.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+    /// The tools an assistant turn called, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// For a tool result: the call it answers, and the tool's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Provider items an assistant turn produced that must go back with it unchanged, such as
+    /// ChatGPT's encrypted reasoning, so the model keeps its train of thought between tool calls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opaque: Vec<Value>,
+}
+
+impl ChatMessage {
+    #[cfg(test)]
+    pub fn text(role: Role, content: &str) -> Self {
+        Self {
+            role,
+            content: content.into(),
+            ..Default::default()
+        }
+    }
+}
+
+/// A tool call as the model made it. `arguments` is JSON text, as models produce it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// A tool the model may call: its name, what it does, and a JSON Schema for its arguments.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
+/// The base64 payload of a `data:` URL, for APIs that take bare base64.
+pub fn data_url_base64(url: &str) -> &str {
+    match url.split_once(";base64,") {
+        Some((head, data)) if head.starts_with("data:") => data,
+        _ => url,
+    }
+}
+
+/// Incremental output sent to the frontend while a reply streams in.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum StreamEvent {
+    /// A piece of the visible answer.
+    Delta { text: String },
+    /// A piece of the model's reasoning, for models that expose it.
+    Reasoning { text: String },
+    /// The model wants a tool run. The frontend runs it and sends the result in the next request.
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: String,
+    },
+    /// Provider state to send back with this turn (see [`ChatMessage::opaque`]).
+    Opaque { item: Value },
+    /// Always the last event. Channel messages and the command's result travel separately,
+    /// so this tells the frontend that no more deltas are in flight.
+    Done,
+}
+
+/// How hard a model can be asked to think: an OpenAI reasoning effort (`none`, `minimal`, `low`,
+/// `medium`, `high`, `xhigh`), or for an Ollama model that only switches thinking on or off,
+/// `none` and `think`.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Effort {
+    pub id: String,
+    /// The provider's own description, when it gives one.
+    pub description: Option<String>,
+}
+
+/// Orders efforts from least to most thinking. Unknown ones go last, in their given order.
+pub fn sort_efforts(mut efforts: Vec<Effort>) -> Vec<Effort> {
+    const LADDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "think", "xhigh"];
+    let mut seen = std::collections::HashSet::new();
+    efforts.retain(|e| seen.insert(e.id.clone()));
+    efforts.sort_by_key(|e| {
+        LADDER
+            .iter()
+            .position(|l| *l == e.id)
+            .unwrap_or(LADDER.len())
+    });
+    efforts
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub provider: Provider,
+    pub id: String,
+    /// A friendlier display name, when the provider has one.
+    pub name: Option<String>,
+    /// Short secondary text, e.g. parameter size and quantization.
+    pub detail: Option<String>,
+    /// Whether the model reads images, when the provider says.
+    pub vision: Option<bool>,
+    /// Whether the model can call tools (Auto mode), when the provider says.
+    pub tools: Option<bool>,
+    /// The efforts the model takes, least first. Empty when there's no choice to make.
+    pub efforts: Vec<Effort>,
+    /// The effort the provider uses when none is asked for.
+    pub default_effort: Option<String>,
+}
+
+/// Models offered by one provider, or why none are available.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderStatus {
+    pub provider: Provider,
+    pub available: bool,
+    pub models: Vec<ModelInfo>,
+    pub message: Option<String>,
+}
+
+/// Turns a non-success HTTP response body into a readable message.
+///
+/// Understands `{"error":{"message":…}}` and Ollama's `{"error":"…"}` shapes.
+pub fn error_from_body(service: &str, status: reqwest::StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            let error = value.get("error")?;
+            error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .or_else(|| error.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| body.trim().chars().take(300).collect());
+    let reason = status.canonical_reason().unwrap_or("");
+    if detail.is_empty() {
+        format!("{service} returned {} {reason}", status.as_u16())
+    } else {
+        format!("{service} returned {} {reason}: {detail}", status.as_u16())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn error_body_shapes() {
+        assert_eq!(
+            error_from_body(
+                "OpenAI",
+                StatusCode::UNAUTHORIZED,
+                r#"{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}"#
+            ),
+            "OpenAI returned 401 Unauthorized: Incorrect API key provided"
+        );
+        assert_eq!(
+            error_from_body(
+                "Ollama",
+                StatusCode::NOT_FOUND,
+                r#"{"error":"model 'llama9' not found"}"#
+            ),
+            "Ollama returned 404 Not Found: model 'llama9' not found"
+        );
+        assert_eq!(
+            error_from_body("Ollama", StatusCode::BAD_GATEWAY, ""),
+            "Ollama returned 502 Bad Gateway"
+        );
+    }
+
+    #[test]
+    fn data_urls() {
+        assert_eq!(data_url_base64("data:image/png;base64,iVBOR"), "iVBOR");
+        assert_eq!(data_url_base64("iVBOR"), "iVBOR");
+        let message: ChatMessage =
+            serde_json::from_str(r#"{"role":"user","content":"hi"}"#).unwrap();
+        assert!(message.images.is_empty());
+        assert_eq!(
+            serde_json::to_string(&message).unwrap(),
+            r#"{"role":"user","content":"hi"}"#
+        );
+    }
+
+    #[test]
+    fn stream_event_wire_format() {
+        let json = serde_json::to_string(&StreamEvent::Delta { text: "hi".into() }).unwrap();
+        assert_eq!(json, r#"{"type":"delta","text":"hi"}"#);
+        let json = serde_json::to_string(&StreamEvent::Done).unwrap();
+        assert_eq!(json, r#"{"type":"done"}"#);
+    }
+}
